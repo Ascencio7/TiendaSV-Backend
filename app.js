@@ -132,6 +132,61 @@ app.get('/categorias', async (req, res) => {
   }
 });
 
+// --- ENDPOINT PARA VENTAS ---
+
+// Registrar una venta (Descuenta stock y guarda movimiento)
+app.post('/ventas', async (req, res) => {
+  const { producto_id, usuario_id, cantidad, precio_unitario } = req.body;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN'); // Iniciamos transacción
+
+    // 1. Verificar stock actual
+    const resStock = await client.query('SELECT stock FROM productos WHERE producto_id = $1', [producto_id]);
+    if (resStock.rows[0].stock < cantidad) {
+      throw new Error('Stock insuficiente');
+    }
+
+    // 2. Descontar stock
+    await client.query(
+      'UPDATE productos SET stock = stock - $1 WHERE producto_id = $2',
+      [cantidad, producto_id]
+    );
+
+    // 3. Registrar en tabla de movimientos (Salida)
+    const total = cantidad * precio_unitario;
+    await client.query(
+      'INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, fecha) VALUES ($1, $2, $3, $4, NOW())',
+      [producto_id, usuario_id, 'salida', cantidad]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ mensaje: "Venta realizada con éxito", total });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Obtener historial de ventas
+app.get('/ventas/historial', async (req, res) => {
+  try {
+    const query = `
+      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total
+      FROM movimientos m
+      JOIN productos p ON m.producto_id = p.producto_id
+      WHERE m.tipo = 'salida'
+      ORDER BY m.fecha DESC`;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
 const PORT = process.env.PORT || 3000;
