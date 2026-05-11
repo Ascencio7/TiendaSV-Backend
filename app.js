@@ -81,46 +81,43 @@ app.get('/productos', async (req, res) => {
   }
 });
 
-// Crear producto (CON IMAGEN)
+// ... (resto del código igual hasta llegar a productos)
+
+// Crear producto (Incluyendo campo activo)
 app.post('/productos', async (req, res) => {
-  const { codigo_barras, nombre, categoria_id, precio, stock, imagen_url } = req.body;
+  const { codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo } = req.body;
   try {
     const result = await pool.query(
-      'INSERT INTO productos (codigo_barras, nombre, categoria_id, precio, stock, imagen_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [codigo_barras, nombre, categoria_id, precio, stock, imagen_url]
+      'INSERT INTO productos (codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo !== undefined ? activo : true]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Actualizar producto (CON código de barras y logs de error)
+// Actualizar producto (Incluyendo campo activo)
 app.put('/productos/:id', async (req, res) => {
   const { id } = req.params;
-  const { codigo_barras, nombre, categoria_id, precio, stock, imagen_url } = req.body;
+  const { codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE productos SET codigo_barras = $1, nombre = $2, categoria_id = $3, precio = $4, stock = $5, imagen_url = $6 WHERE producto_id = $7 RETURNING *',
-      [codigo_barras, nombre, categoria_id, precio, stock, imagen_url, id]
+      'UPDATE productos SET codigo_barras = $1, nombre = $2, categoria_id = $3, precio = $4, stock = $5, imagen_url = $6, activo = $7 WHERE producto_id = $8 RETURNING *',
+      [codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo, id]
     );
-    
-    if (result.rowCount === 0) {
-      return res.status(404).json({ mensaje: "Producto no encontrado" });
-    }
     res.json(result.rows[0]);
   } catch (err) {
-    console.error("❌ ERROR EN PUT:", err.message); // Mira esto en los logs de Render
     res.status(500).json({ error: err.message });
   }
 });
 
+// ELIMINACIÓN LÓGICA: En lugar de DELETE, hacemos un UPDATE
 app.delete('/productos/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query('DELETE FROM productos WHERE producto_id = $1', [id]);
-    res.status(204).send();
+    await pool.query('UPDATE productos SET activo = false WHERE producto_id = $1', [id]);
+    res.status(200).json({ mensaje: "Producto marcado como inactivo" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
