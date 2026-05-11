@@ -96,17 +96,22 @@ app.post('/productos', async (req, res) => {
   }
 });
 
-// Actualizar producto (CON IMAGEN)
+// Actualizar producto (CON código de barras y logs de error)
 app.put('/productos/:id', async (req, res) => {
   const { id } = req.params;
-  const { nombre, categoria_id, precio, stock, imagen_url } = req.body;
+  const { codigo_barras, nombre, categoria_id, precio, stock, imagen_url } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE productos SET nombre = $1, categoria_id = $2, precio = $3, stock = $4, imagen_url = $5 WHERE producto_id = $6 RETURNING *',
-      [nombre, categoria_id, precio, stock, imagen_url, id]
+      'UPDATE productos SET codigo_barras = $1, nombre = $2, categoria_id = $3, precio = $4, stock = $5, imagen_url = $6 WHERE producto_id = $7 RETURNING *',
+      [codigo_barras, nombre, categoria_id, precio, stock, imagen_url, id]
     );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ mensaje: "Producto no encontrado" });
+    }
     res.json(result.rows[0]);
   } catch (err) {
+    console.error("❌ ERROR EN PUT:", err.message); // Mira esto en los logs de Render
     res.status(500).json({ error: err.message });
   }
 });
