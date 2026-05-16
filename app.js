@@ -264,19 +264,25 @@ app.post('/usuarios', async (req, res) => {
 
 // --- PRODUCTOS: Ahora devolvemos nombre de tienda y vendedor (JOIN) ---
 app.get('/productos', async (req, res) => {
+  const { sucursal_id } = req.query; // Capturamos el ID enviado por la App
   try {
-    const query = `
-      SELECT 
-        p.*, 
-        c.nombre as categoria, 
-        s.nombre as sucursal_nombre, 
-        u.nombre as vendedor_nombre
+    let query = `
+      SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre, u.nombre as vendedor_nombre
       FROM productos p 
       LEFT JOIN categorias c ON p.categoria_id = c.categoria_id 
       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
       LEFT JOIN usuarios u ON u.sucursal_id = s.sucursal_id AND u.rol = 'vendedor'
-      ORDER BY p.producto_id DESC`;
-    const result = await pool.query(query);
+    `;
+    
+    let params = [];
+    if (sucursal_id) {
+      query += ` WHERE p.sucursal_id = $1`;
+      params.push(sucursal_id);
+    }
+    
+    query += ` ORDER BY p.producto_id DESC`;
+    
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
