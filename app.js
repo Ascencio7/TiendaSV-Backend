@@ -219,13 +219,13 @@ app.get('/ventas/historial', async (req, res) => {
     
     let params = [];
     
-    // Si es un Cliente: solo ve sus propias compras
-    if (usuario_id && !sucursal_id) {
+    // Si viene usuario_id y NO viene sucursal_id -> Es un CLIENTE viendo sus compras
+    if (usuario_id && (!sucursal_id || sucursal_id === 'null')) {
         params.push(usuario_id);
         query += ` AND m.usuario_id = $${params.length}`;
     } 
-    // Si es un Vendedor: ve las ventas realizadas en su sucursal o de sus productos
-    else if (sucursal_id) {
+    // Si viene sucursal_id -> Es un VENDEDOR viendo las ventas de su tienda
+    else if (sucursal_id && sucursal_id !== 'null') {
         params.push(sucursal_id);
         query += ` AND p.sucursal_id = $${params.length}`;
     }
