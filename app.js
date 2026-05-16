@@ -37,14 +37,15 @@ app.post('/login', async (req, res) => {
     );
 
     if (result.rows.length > 0) {
-      res.status(200).json({
+    // En app.js, dentro de app.post('/login', ...)
+    res.status(200).json({
         mensaje: 'Bienvenido',
         usuario_id: result.rows[0].usuario_id,
         nombre: result.rows[0].nombre,
         rol: result.rows[0].rol,
-        sucursal_id: result.rows[0].sucursal_id,
+        sucursal_id: result.rows[0].sucursal_id, // <--- ESTO ES VITAL
         token: 'token_simulado_123' 
-      });
+    });
     } else {
       res.status(401).json({ mensaje: 'Credenciales inválidas' });
     }
