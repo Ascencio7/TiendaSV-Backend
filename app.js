@@ -37,14 +37,16 @@ app.post('/login', async (req, res) => {
       [correo, password]
     );
 
-    if (result.rows.length > 0) {
-      res.status(200).json({
-        mensaje: 'Bienvenido',
-        usuario_id: result.rows[0].usuario_id,
-        nombre: result.rows[0].nombre,
-        token: 'token_simulado_123' 
-      });
-    } else {
+// En tu backend, modifica la respuesta del /login:
+if (result.rows.length > 0) {
+  res.status(200).json({
+    mensaje: 'Bienvenido',
+    usuario_id: result.rows[0].usuario_id,
+    nombre: result.rows[0].nombre,
+    rol: result.rows[0].rol, // <--- AGREGA ESTA LÍNEA
+    token: 'token_simulado_123' 
+  });
+} else {
       res.status(401).json({ mensaje: 'Credenciales inválidas' });
     }
   } catch (err) {
