@@ -88,24 +88,35 @@ app.post('/usuarios', async (req, res) => {
 // --- ENDPOINTS PARA PRODUCTOS (CRUD) ---
 
 app.get('/productos', async (req, res) => {
-  const { sucursal_id } = req.query;
+  const { sucursal_id, usuario_id } = req.query;
   try {
     let query = `
       SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre, u.nombre as vendedor_nombre
       FROM productos p 
       LEFT JOIN categorias c ON p.categoria_id = c.categoria_id 
       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      LEFT JOIN usuarios u ON u.sucursal_id = s.sucursal_id AND u.rol = 'vendedor'
+      LEFT JOIN usuarios u ON u.usuario_id = p.usuario_id
     `;
     
     let params = [];
-    if (sucursal_id) {
-      query += ` WHERE p.sucursal_id = $1`;
+    let conditions = [];
+
+    // Si viene usuario_id (Vendedor), solo ve sus productos
+    if (usuario_id && usuario_id !== '0') {
+      params.push(usuario_id);
+      conditions.push(`p.usuario_id = $${params.length}`);
+    } 
+    // Si viene sucursal_id (Cliente), ve todo lo de esa tienda
+    else if (sucursal_id && sucursal_id !== '0') {
       params.push(sucursal_id);
+      conditions.push(`p.sucursal_id = $${params.length}`);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ` + conditions.join(' AND ');
     }
     
     query += ` ORDER BY p.producto_id DESC`;
-    
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
@@ -113,18 +124,20 @@ app.get('/productos', async (req, res) => {
   }
 });
 
+// Al crear producto, guardamos quién es el dueño (usuario_id)
 app.post('/productos', async (req, res) => {
-  const { codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo, sucursal_id } = req.body;
+  const { codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo, sucursal_id, usuario_id } = req.body;
   try {
     const result = await pool.query(
-      'INSERT INTO productos (codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo, sucursal_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-      [codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo !== undefined ? activo : true, sucursal_id]
+      'INSERT INTO productos (codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo, sucursal_id, usuario_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+      [codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo !== undefined ? activo : true, sucursal_id, usuario_id]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.put('/productos/:id', async (req, res) => {
   const { id } = req.params;
