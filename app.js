@@ -29,24 +29,51 @@ pool.connect()
 
 // --- ENDPOINTS PARA USUARIOS ---
 
+// app.post('/login', async (req, res) => {
+//   const { correo, password } = req.body;
+//   try {
+//     const result = await pool.query(
+//       'SELECT usuario_id, nombre, correo, rol FROM usuarios WHERE correo = $1 AND password = $2',
+//       [correo, password]
+//     );
+
+// // En tu backend, modifica la respuesta del /login:
+// if (result.rows.length > 0) {
+//   res.status(200).json({
+//     mensaje: 'Bienvenido',
+//     usuario_id: result.rows[0].usuario_id,
+//     nombre: result.rows[0].nombre,
+//     rol: result.rows[0].rol, // <--- AGREGA ESTA LÍNEA
+//     token: 'token_simulado_123' 
+//   });
+// } else {
+//       res.status(401).json({ mensaje: 'Credenciales inválidas' });
+//     }
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+
 app.post('/login', async (req, res) => {
   const { correo, password } = req.body;
   try {
+    // Agregamos 'rol' y 'sucursal_id' a la consulta
     const result = await pool.query(
-      'SELECT usuario_id, nombre, correo, rol FROM usuarios WHERE correo = $1 AND password = $2',
+      'SELECT usuario_id, nombre, correo, rol, sucursal_id FROM usuarios WHERE correo = $1 AND password = $2',
       [correo, password]
     );
 
-// En tu backend, modifica la respuesta del /login:
-if (result.rows.length > 0) {
-  res.status(200).json({
-    mensaje: 'Bienvenido',
-    usuario_id: result.rows[0].usuario_id,
-    nombre: result.rows[0].nombre,
-    rol: result.rows[0].rol, // <--- AGREGA ESTA LÍNEA
-    token: 'token_simulado_123' 
-  });
-} else {
+    if (result.rows.length > 0) {
+      res.status(200).json({
+        mensaje: 'Bienvenido',
+        usuario_id: result.rows[0].usuario_id,
+        nombre: result.rows[0].nombre,
+        rol: result.rows[0].rol,          // <--- IMPORTANTE
+        sucursal_id: result.rows[0].sucursal_id, // <--- IMPORTANTE
+        token: 'token_simulado_123' 
+      });
+    } else {
       res.status(401).json({ mensaje: 'Credenciales inválidas' });
     }
   } catch (err) {
