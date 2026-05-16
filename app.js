@@ -206,20 +206,39 @@ app.post('/ventas', async (req, res) => {
   }
 });
 
+// --- ACTUALIZA ESTO EN TU APP.JS ---
 app.get('/ventas/historial', async (req, res) => {
+  const { usuario_id, sucursal_id } = req.query;
   try {
-    const query = `
+    let query = `
       SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       WHERE m.tipo = 'salida'
-      ORDER BY m.fecha DESC`;
-    const result = await pool.query(query);
+    `;
+    
+    let params = [];
+    
+    // Si es un Cliente: solo ve sus propias compras
+    if (usuario_id && !sucursal_id) {
+        params.push(usuario_id);
+        query += ` AND m.usuario_id = $${params.length}`;
+    } 
+    // Si es un Vendedor: ve las ventas realizadas en su sucursal o de sus productos
+    else if (sucursal_id) {
+        params.push(sucursal_id);
+        query += ` AND p.sucursal_id = $${params.length}`;
+    }
+
+    query += ` ORDER BY m.fecha DESC`;
+    
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
