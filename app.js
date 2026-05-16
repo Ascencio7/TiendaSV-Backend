@@ -189,6 +189,77 @@ app.get('/ventas/historial', async (req, res) => {
   }
 });
 
+
+// --- ENDPOINT PARA LISTAR SUCURSALES (Usado por el cliente para elegir tienda) ---
+app.get('/sucursales', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM sucursales ORDER BY nombre ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- REGISTRO DE USUARIO + CREACIÓN DE TIENDA ---
+app.post('/usuarios', async (req, res) => {
+  const { nombre, correo, password, rol, nombreTienda, direccionTienda } = req.body;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    let sucursalId = null;
+
+    // Si es vendedor, creamos primero su sucursal (tienda)
+    if (rol === 'vendedor' && nombreTienda) {
+      const resTienda = await client.query(
+        'INSERT INTO sucursales (nombre, direccion) VALUES ($1, $2) RETURNING sucursal_id',
+        [nombreTienda, direccionTienda]
+      );
+      sucursalId = resTienda.rows[0].sucursal_id;
+    }
+
+    // Insertamos el usuario vinculado a la sucursal creada
+    await client.query(
+      'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id) VALUES ($1, $2, $3, $4, $5)',
+      [nombre, correo, password, rol || 'cliente', sucursalId]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ mensaje: 'Usuario y tienda registrados con éxito' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// --- PRODUCTOS: Ahora devolvemos nombre de tienda y vendedor (JOIN) ---
+app.get('/productos', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        p.*, 
+        c.nombre as categoria, 
+        s.nombre as sucursal_nombre, 
+        u.nombre as vendedor_nombre
+      FROM productos p 
+      LEFT JOIN categorias c ON p.categoria_id = c.categoria_id 
+      LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      LEFT JOIN usuarios u ON u.sucursal_id = s.sucursal_id AND u.rol = 'vendedor'
+      ORDER BY p.producto_id DESC`;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+
+
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
 const PORT = process.env.PORT || 3000;
