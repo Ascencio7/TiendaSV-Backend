@@ -62,8 +62,12 @@ app.post('/usuarios', async (req, res) => {
     await client.query('BEGIN');
     let sucursalId = null;
 
-    // Si es vendedor, creamos primero su sucursal (tienda)
-    if (rol === 'vendedor' && nombreTienda) {
+    // REGISTRO DE VENDEDOR
+    if (rol === 'vendedor') {
+      if (!nombreTienda || !direccionTienda) {
+        throw new Error('Faltan datos de la tienda (Nombre o Dirección)');
+      }
+      
       const resTienda = await client.query(
         'INSERT INTO sucursales (nombre, direccion) VALUES ($1, $2) RETURNING sucursal_id',
         [nombreTienda, direccionTienda]
@@ -71,16 +75,18 @@ app.post('/usuarios', async (req, res) => {
       sucursalId = resTienda.rows[0].sucursal_id;
     }
 
+    // REGISTRO DE USUARIO (Vendedor o Cliente)
     await client.query(
       'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id) VALUES ($1, $2, $3, $4, $5)',
       [nombre, correo, password, rol || 'cliente', sucursalId]
     );
 
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: 'Usuario y tienda registrados con éxito' });
+    res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error("ERROR REGISTRO:", err.message);
+    res.status(400).json({ error: err.message }); // Enviamos el error real a la App
   } finally {
     client.release();
   }
