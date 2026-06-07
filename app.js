@@ -434,6 +434,17 @@ app.post('/admin/sucursales', async (req, res) => {
   }
 });
 
+// Eliminar Sucursal Permanente
+app.delete('/admin/sucursales/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM sucursales WHERE sucursal_id = $1', [id]);
+    res.status(200).json({ mensaje: 'Tienda eliminada permanentemente' });
+  } catch (err) {
+    res.status(500).json({ error: "No se puede eliminar la tienda porque tiene registros vinculados (productos/ventas)." });
+  }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
