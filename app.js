@@ -347,7 +347,8 @@ app.get('/admin/reporte-ventas', async (req, res) => {
 app.get('/admin/reporte-usuarios', async (req, res) => {
   const { activo, rol, usuario_id } = req.query;
   try {
-    let query = `SELECT nombre, correo, rol, activo, creado_en FROM usuarios WHERE 1=1`;
+    // IMPORTANTE: Agregamos usuario_id al SELECT
+    let query = `SELECT usuario_id, nombre, correo, rol, activo, creado_en FROM usuarios WHERE 1=1`;
     let params = [];
 
     if (activo !== undefined && activo !== '') {
