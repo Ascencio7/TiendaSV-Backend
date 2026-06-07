@@ -247,6 +247,34 @@ app.get('/ventas/historial', async (req, res) => {
 });
 
 
+// --- ENDPOINT PARA RESTABLECER CONTRASEÑA ---
+
+app.put('/usuarios/reset-password', async (req, res) => {
+  const { correo, nuevaPassword } = req.body;
+
+  if (!correo || !nuevaPassword) {
+    return res.status(400).json({ error: 'Faltan datos obligatorios (correo o nuevaPassword)' });
+  }
+
+  try {
+    // Actualizamos la contraseña solo si el correo existe
+    const result = await pool.query(
+      'UPDATE usuarios SET password = $1 WHERE correo = $2 RETURNING usuario_id',
+      [nuevaPassword, correo]
+    );
+
+    if (result.rows.length > 0) {
+      res.status(200).json({ mensaje: 'Contraseña actualizada con éxito' });
+    } else {
+      // Si result.rows está vacío, es porque el WHERE correo = $2 no encontró coincidencias
+      res.status(404).json({ error: 'El correo electrónico no está registrado' });
+    }
+  } catch (err) {
+    console.error("ERROR RESET PASSWORD:", err.message);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
