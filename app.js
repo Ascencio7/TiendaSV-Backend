@@ -372,6 +372,27 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
   }
 });
 
+// --- ENDPOINT PARA ACTUALIZAR USUARIO (Incluye Edición y Desactivación) ---
+app.put('/admin/usuarios/:id', async (req, res) => {
+  const { id } = req.params;
+  const { nombre, correo, rol, activo } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE usuarios SET nombre = $1, correo = $2, rol = $3, activo = $4 WHERE usuario_id = $5 RETURNING *',
+      [nombre, correo, rol, activo, id]
+    );
+
+    if (result.rows.length > 0) {
+      res.status(200).json({ mensaje: 'Usuario actualizado correctamente' });
+    } else {
+      res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+  } catch (err) {
+    console.error("ERROR UPDATE USER:", err.message);
+    res.status(500).json({ error: 'Error al actualizar el usuario' });
+  }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
