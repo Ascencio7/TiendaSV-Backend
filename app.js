@@ -297,6 +297,59 @@ app.put('/usuarios/reset-password', async (req, res) => {
 });
 
 
+// --- ENDPOINTS PARA REPORTES ADMINISTRATIVOS ---
+
+// 1. Data para Reporte de Inventario Global
+app.get('/admin/reporte-inventario', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT p.nombre, p.codigo_barras, p.precio, p.stock, c.nombre as categoria, s.nombre as tienda
+      FROM productos p
+      LEFT JOIN categorias c ON p.categoria_id = c.categoria_id
+      LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      WHERE p.activo = true
+      ORDER BY s.nombre, p.nombre
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Data para Reporte de Ventas Globales
+app.get('/admin/reporte-ventas', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT m.fecha, p.nombre as producto, m.cantidad, (m.cantidad * p.precio) as total, 
+             s.nombre as tienda, u.nombre as vendedor
+      FROM movimientos m
+      JOIN productos p ON m.producto_id = p.producto_id
+      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      JOIN usuarios u ON p.usuario_id = u.usuario_id
+      WHERE m.tipo = 'salida'
+      ORDER BY m.fecha DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Data para Reporte de Usuarios
+app.get('/admin/reporte-usuarios', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT nombre, correo, rol, creado_en
+      FROM usuarios
+      ORDER BY rol, nombre
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
 const PORT = process.env.PORT || 3000;
