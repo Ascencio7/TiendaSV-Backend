@@ -54,20 +54,23 @@ app.post('/login', async (req, res) => {
   }
 });
 
+// --- ENDPOINT DE REGISTRO PÚBLICO (Vendedores/Clientes) ---
 app.post('/usuarios', async (req, res) => {
   const { nombre, correo, password, rol, nombreTienda, direccionTienda } = req.body;
-  const client = await pool.connect();
+  
+  // SEGURIDAD: Bloquear dominio corporativo en registro libre
+  if (correo.toLowerCase().endsWith('@tiendasv.com')) {
+    return res.status(403).json({ 
+      error: 'Dominio reservado. Los administradores deben ser creados por personal autorizado.' 
+    });
+  }
 
+  const client = await pool.connect();
   try {
     await client.query('BEGIN');
     let sucursalId = null;
 
-    // REGISTRO DE VENDEDOR
     if (rol === 'vendedor') {
-      if (!nombreTienda || !direccionTienda) {
-        throw new Error('Faltan datos de la tienda (Nombre o Dirección)');
-      }
-      
       const resTienda = await client.query(
         'INSERT INTO sucursales (nombre, direccion) VALUES ($1, $2) RETURNING sucursal_id',
         [nombreTienda, direccionTienda]
@@ -75,7 +78,6 @@ app.post('/usuarios', async (req, res) => {
       sucursalId = resTienda.rows[0].sucursal_id;
     }
 
-    // REGISTRO DE USUARIO (Vendedor o Cliente)
     await client.query(
       'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id) VALUES ($1, $2, $3, $4, $5)',
       [nombre, correo, password, rol || 'cliente', sucursalId]
@@ -85,10 +87,29 @@ app.post('/usuarios', async (req, res) => {
     res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR REGISTRO:", err.message);
-    res.status(400).json({ error: err.message }); // Enviamos el error real a la App
+    res.status(400).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// --- ENDPOINT EXCLUSIVO PARA ADMIN (Crea otros Admins) ---
+app.post('/admin/crear-admin', async (req, res) => {
+  const { nombre, correo, password } = req.body;
+
+  // OBLIGATORIO: Debe ser dominio corporativo
+  if (!correo.toLowerCase().endsWith('@tiendasv.com')) {
+    return res.status(400).json({ error: 'El correo debe ser @tiendasv.com' });
+  }
+
+  try {
+    await pool.query(
+      'INSERT INTO usuarios (nombre, correo, password, rol) VALUES ($1, $2, $3, $4)',
+      [nombre, correo, password, 'admin']
+    );
+    res.status(201).json({ mensaje: 'Administrador creado correctamente' });
+  } catch (err) {
+    res.status(400).json({ error: 'Error al crear admin' });
   }
 });
 
