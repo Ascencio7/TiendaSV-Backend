@@ -297,18 +297,19 @@ app.put('/usuarios/reset-password', async (req, res) => {
 });
 
 
-// --- ENDPOINTS PARA REPORTES ADMINISTRATIVOS ---
+// --- ENDPOINTS PARA REPORTES ADMINISTRATIVOS MEJORADOS ---
 
-// 1. Data para Reporte de Inventario Global
+// 1. Reporte de Inventario: Tienda, total productos y valor total
 app.get('/admin/reporte-inventario', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT p.nombre, p.codigo_barras, p.precio, p.stock, c.nombre as categoria, s.nombre as tienda
-      FROM productos p
-      LEFT JOIN categorias c ON p.categoria_id = c.categoria_id
-      LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      WHERE p.activo = true
-      ORDER BY s.nombre, p.nombre
+      SELECT s.nombre as tienda, 
+             COUNT(p.producto_id) as total_productos, 
+             COALESCE(SUM(p.stock * p.precio), 0) as valor_total
+      FROM sucursales s
+      LEFT JOIN productos p ON s.sucursal_id = p.sucursal_id AND p.activo = true
+      GROUP BY s.sucursal_id, s.nombre
+      ORDER BY s.nombre ASC
     `);
     res.json(result.rows);
   } catch (err) {
@@ -316,10 +317,11 @@ app.get('/admin/reporte-inventario', async (req, res) => {
   }
 });
 
-// 2. Data para Reporte de Ventas Globales
+// 2. Reporte de Ventas con Filtro de Tienda
 app.get('/admin/reporte-ventas', async (req, res) => {
+  const { sucursal_id } = req.query;
   try {
-    const result = await pool.query(`
+    let query = `
       SELECT m.fecha, p.nombre as producto, m.cantidad, (m.cantidad * p.precio) as total, 
              s.nombre as tienda, u.nombre as vendedor
       FROM movimientos m
@@ -327,22 +329,42 @@ app.get('/admin/reporte-ventas', async (req, res) => {
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
       JOIN usuarios u ON p.usuario_id = u.usuario_id
       WHERE m.tipo = 'salida'
-      ORDER BY m.fecha DESC
-    `);
+    `;
+    let params = [];
+    if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0') {
+      params.push(sucursal_id);
+      query += ` AND s.sucursal_id = $${params.length}`;
+    }
+    query += ` ORDER BY m.fecha DESC`;
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 3. Data para Reporte de Usuarios
+// 3. Reporte de Usuarios con Filtros (Estado, Rol, Usuario Específico)
 app.get('/admin/reporte-usuarios', async (req, res) => {
+  const { activo, rol, usuario_id } = req.query;
   try {
-    const result = await pool.query(`
-      SELECT nombre, correo, rol, creado_en
-      FROM usuarios
-      ORDER BY rol, nombre
-    `);
+    let query = `SELECT nombre, correo, rol, activo, creado_en FROM usuarios WHERE 1=1`;
+    let params = [];
+
+    if (activo !== undefined && activo !== '') {
+      params.push(activo === 'true');
+      query += ` AND activo = $${params.length}`;
+    }
+    if (rol && rol !== 'Todos') {
+      params.push(rol.toLowerCase());
+      query += ` AND rol = $${params.length}`;
+    }
+    if (usuario_id && usuario_id !== '0') {
+      params.push(usuario_id);
+      query += ` AND usuario_id = $${params.length}`;
+    }
+
+    query += ` ORDER BY rol, nombre`;
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
