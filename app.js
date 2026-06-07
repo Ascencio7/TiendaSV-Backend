@@ -393,6 +393,47 @@ app.put('/admin/usuarios/:id', async (req, res) => {
   }
 });
 
+// --- GESTIÓN DE TIENDAS (ADMIN) ---
+
+// 1. Obtener todas las tiendas (Activas e Inactivas)
+app.get('/admin/sucursales', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM sucursales ORDER BY nombre ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Actualizar tienda (Edición y Eliminación Lógica)
+app.put('/admin/sucursales/:id', async (req, res) => {
+  const { id } = req.params;
+  const { nombre, direccion, departamento, activo, latitud, longitud } = req.body;
+  try {
+    await pool.query(
+      'UPDATE sucursales SET nombre = $1, direccion = $2, departamento = $3, activo = $4, latitud = $5, longitud = $6 WHERE sucursal_id = $7',
+      [nombre, direccion, departamento, activo, latitud, longitud, id]
+    );
+    res.status(200).json({ mensaje: 'Tienda actualizada correctamente' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Crear nueva tienda
+app.post('/admin/sucursales', async (req, res) => {
+  const { nombre, direccion, departamento, latitud, longitud } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO sucursales (nombre, direccion, departamento, latitud, longitud, activo) VALUES ($1, $2, $3, $4, $5, true) RETURNING *',
+      [nombre, direccion, departamento, latitud, longitud]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
