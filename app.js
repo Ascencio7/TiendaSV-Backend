@@ -54,45 +54,6 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// --- ENDPOINT DE REGISTRO PÚBLICO (Vendedores/Clientes) ---
-// app.post('/usuarios', async (req, res) => {
-//   const { nombre, correo, password, rol, nombreTienda, direccionTienda } = req.body;
-  
-//   // SEGURIDAD: Bloquear dominio corporativo en registro libre
-//   if (correo.toLowerCase().endsWith('@tiendasv.com')) {
-//     return res.status(403).json({ 
-//       error: 'Dominio reservado. Los administradores deben ser creados por personal autorizado.' 
-//     });
-//   }
-
-//   const client = await pool.connect();
-//   try {
-//     await client.query('BEGIN');
-//     let sucursalId = null;
-
-//     if (rol === 'vendedor') {
-//       const resTienda = await client.query(
-//         'INSERT INTO sucursales (nombre, direccion) VALUES ($1, $2) RETURNING sucursal_id',
-//         [nombreTienda, direccionTienda]
-//       );
-//       sucursalId = resTienda.rows[0].sucursal_id;
-//     }
-
-//     await client.query(
-//       'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id) VALUES ($1, $2, $3, $4, $5)',
-//       [nombre, correo, password, rol || 'cliente', sucursalId]
-//     );
-
-//     await client.query('COMMIT');
-//     res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
-//   } catch (err) {
-//     await client.query('ROLLBACK');
-//     res.status(400).json({ error: err.message });
-//   } finally {
-//     client.release();
-//   }
-// });
-
 // --- ENDPOINT EXCLUSIVO PARA ADMIN (Crea otros Admins) ---
 app.post('/admin/crear-admin', async (req, res) => {
   const { nombre, correo, password } = req.body;
@@ -433,10 +394,19 @@ app.put('/admin/usuarios/:id', async (req, res) => {
 });
 
 // --- GESTIÓN DE TIENDAS (ADMIN) ---
+// --- GESTIÓN DE TIENDAS (ADMIN) ---
 
-// --- GESTIÓN DE SUCURSALES (ADMIN) ACTUALIZADO ---
+// 1. OBTENER TODAS LAS TIENDAS (Activas e Inactivas) - ¡VITAL PARA QUE CARGUEN!
+app.get('/admin/sucursales', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM sucursales ORDER BY nombre ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-// 1. Crear nueva tienda (Incluyendo Municipio)
+// 2. CREAR NUEVA TIENDA (Incluyendo Municipio)
 app.post('/admin/sucursales', async (req, res) => {
   const { nombre, direccion, departamento, municipio, latitud, longitud } = req.body;
   try {
@@ -446,12 +416,11 @@ app.post('/admin/sucursales', async (req, res) => {
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error("ERROR POST STORE:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// 2. Actualizar tienda (Incluyendo Municipio)
+// 3. ACTUALIZAR TIENDA (Incluyendo Municipio y Estado)
 app.put('/admin/sucursales/:id', async (req, res) => {
   const { id } = req.params;
   const { nombre, direccion, departamento, municipio, activo, latitud, longitud } = req.body;
@@ -462,45 +431,43 @@ app.put('/admin/sucursales/:id', async (req, res) => {
     );
     res.status(200).json({ mensaje: 'Tienda actualizada correctamente' });
   } catch (err) {
-    console.error("ERROR PUT STORE:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// 3. Crear nueva tienda
-app.post('/admin/sucursales', async (req, res) => {
-  const { nombre, direccion, departamento, latitud, longitud } = req.body;
+// --- REGISTRO DE USUARIO (Descomentado y corregido) ---
+app.post('/usuarios', async (req, res) => {
+  const { nombre, correo, password, rol, nombreTienda, direccionTienda, departamentoTienda, municipioTienda } = req.body;
+  
+  if (correo.toLowerCase().endsWith('@tiendasv.com')) {
+    return res.status(403).json({ error: 'Dominio reservado para administradores.' });
+  }
+
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      'INSERT INTO sucursales (nombre, direccion, departamento, latitud, longitud, activo) VALUES ($1, $2, $3, $4, $5, true) RETURNING *',
-      [nombre, direccion, departamento, latitud, longitud]
+    await client.query('BEGIN');
+    let sucursalId = null;
+
+    if (rol === 'vendedor') {
+      const resTienda = await client.query(
+        'INSERT INTO sucursales (nombre, direccion, departamento, municipio, activo) VALUES ($1, $2, $3, $4, true) RETURNING sucursal_id',
+        [nombreTienda, direccionTienda, departamentoTienda, municipioTienda]
+      );
+      sucursalId = resTienda.rows[0].sucursal_id;
+    }
+
+    await client.query(
+      'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id, activo) VALUES ($1, $2, $3, $4, $5, true)',
+      [nombre, correo, password, rol || 'cliente', sucursalId]
     );
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
-// --- ELIMINACIÓN PERMANENTE DE USUARIOS ---
-app.delete('/admin/usuarios/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    // Gracias al CASCADE de SQL, esto borrará TODO lo del usuario
-    const result = await pool.query('DELETE FROM usuarios WHERE usuario_id = $1 RETURNING *', [id]);
-    res.status(200).json({ mensaje: 'Usuario y todos sus registros eliminados' });
+    await client.query('COMMIT');
+    res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --- ELIMINACIÓN PERMANENTE DE TIENDAS ---
-app.delete('/admin/sucursales/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    await pool.query('DELETE FROM sucursales WHERE sucursal_id = $1', [id]);
-    res.status(200).json({ mensaje: 'Tienda y datos asociados eliminados' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -579,40 +546,40 @@ app.get('/municipios', async (req, res) => {
 });
 
 // --- REGISTRO DE USUARIO ACTUALIZADO CON DEPARTAMENTO Y MUNICIPIO ---
-app.post('/usuarios', async (req, res) => {
-  const { nombre, correo, password, rol, nombreTienda, direccionTienda, departamentoTienda, municipioTienda } = req.body;
+// app.post('/usuarios', async (req, res) => {
+//   const { nombre, correo, password, rol, nombreTienda, direccionTienda, departamentoTienda, municipioTienda } = req.body;
   
-  if (correo.toLowerCase().endsWith('@tiendasv.com')) {
-    return res.status(403).json({ error: 'Dominio reservado para administradores.' });
-  }
+//   if (correo.toLowerCase().endsWith('@tiendasv.com')) {
+//     return res.status(403).json({ error: 'Dominio reservado para administradores.' });
+//   }
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    let sucursalId = null;
+//   const client = await pool.connect();
+//   try {
+//     await client.query('BEGIN');
+//     let sucursalId = null;
 
-    if (rol === 'vendedor') {
-      const resTienda = await client.query(
-        'INSERT INTO sucursales (nombre, direccion, departamento, municipio, activo) VALUES ($1, $2, $3, $4, true) RETURNING sucursal_id',
-        [nombreTienda, direccionTienda, departamentoTienda, municipioTienda]
-      );
-      sucursalId = resTienda.rows[0].sucursal_id;
-    }
+//     if (rol === 'vendedor') {
+//       const resTienda = await client.query(
+//         'INSERT INTO sucursales (nombre, direccion, departamento, municipio, activo) VALUES ($1, $2, $3, $4, true) RETURNING sucursal_id',
+//         [nombreTienda, direccionTienda, departamentoTienda, municipioTienda]
+//       );
+//       sucursalId = resTienda.rows[0].sucursal_id;
+//     }
 
-    await client.query(
-      'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id, activo) VALUES ($1, $2, $3, $4, $5, true)',
-      [nombre, correo, password, rol || 'cliente', sucursalId]
-    );
+//     await client.query(
+//       'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id, activo) VALUES ($1, $2, $3, $4, $5, true)',
+//       [nombre, correo, password, rol || 'cliente', sucursalId]
+//     );
 
-    await client.query('COMMIT');
-    res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(400).json({ error: err.message });
-  } finally {
-    client.release();
-  }
-});
+//     await client.query('COMMIT');
+//     res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
+//   } catch (err) {
+//     await client.query('ROLLBACK');
+//     res.status(400).json({ error: err.message });
+//   } finally {
+//     client.release();
+//   }
+// });
 
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
