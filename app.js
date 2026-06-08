@@ -55,43 +55,43 @@ app.post('/login', async (req, res) => {
 });
 
 // --- ENDPOINT DE REGISTRO PÚBLICO (Vendedores/Clientes) ---
-app.post('/usuarios', async (req, res) => {
-  const { nombre, correo, password, rol, nombreTienda, direccionTienda } = req.body;
+// app.post('/usuarios', async (req, res) => {
+//   const { nombre, correo, password, rol, nombreTienda, direccionTienda } = req.body;
   
-  // SEGURIDAD: Bloquear dominio corporativo en registro libre
-  if (correo.toLowerCase().endsWith('@tiendasv.com')) {
-    return res.status(403).json({ 
-      error: 'Dominio reservado. Los administradores deben ser creados por personal autorizado.' 
-    });
-  }
+//   // SEGURIDAD: Bloquear dominio corporativo en registro libre
+//   if (correo.toLowerCase().endsWith('@tiendasv.com')) {
+//     return res.status(403).json({ 
+//       error: 'Dominio reservado. Los administradores deben ser creados por personal autorizado.' 
+//     });
+//   }
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    let sucursalId = null;
+//   const client = await pool.connect();
+//   try {
+//     await client.query('BEGIN');
+//     let sucursalId = null;
 
-    if (rol === 'vendedor') {
-      const resTienda = await client.query(
-        'INSERT INTO sucursales (nombre, direccion) VALUES ($1, $2) RETURNING sucursal_id',
-        [nombreTienda, direccionTienda]
-      );
-      sucursalId = resTienda.rows[0].sucursal_id;
-    }
+//     if (rol === 'vendedor') {
+//       const resTienda = await client.query(
+//         'INSERT INTO sucursales (nombre, direccion) VALUES ($1, $2) RETURNING sucursal_id',
+//         [nombreTienda, direccionTienda]
+//       );
+//       sucursalId = resTienda.rows[0].sucursal_id;
+//     }
 
-    await client.query(
-      'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id) VALUES ($1, $2, $3, $4, $5)',
-      [nombre, correo, password, rol || 'cliente', sucursalId]
-    );
+//     await client.query(
+//       'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id) VALUES ($1, $2, $3, $4, $5)',
+//       [nombre, correo, password, rol || 'cliente', sucursalId]
+//     );
 
-    await client.query('COMMIT');
-    res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(400).json({ error: err.message });
-  } finally {
-    client.release();
-  }
-});
+//     await client.query('COMMIT');
+//     res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
+//   } catch (err) {
+//     await client.query('ROLLBACK');
+//     res.status(400).json({ error: err.message });
+//   } finally {
+//     client.release();
+//   }
+// });
 
 // --- ENDPOINT EXCLUSIVO PARA ADMIN (Crea otros Admins) ---
 app.post('/admin/crear-admin', async (req, res) => {
@@ -486,26 +486,6 @@ app.delete('/admin/sucursales/:id', async (req, res) => {
   }
 });
 
-// app.get('/admin/comentarios', async (req, res) => {
-//   try {
-//     const result = await pool.query(`
-//       SELECT c.*, 
-//              u.nombre as cliente_nombre, 
-//              s.nombre as sucursal_nombre, 
-//              p.nombre as producto_nombre,
-//              (SELECT nombre FROM usuarios WHERE sucursal_id = s.sucursal_id AND rol = 'vendedor' LIMIT 1) as responsable_nombre
-//       FROM comentarios c
-//       JOIN usuarios u ON c.usuario_id = u.usuario_id
-//       JOIN sucursales s ON c.sucursal_id = s.sucursal_id
-//       LEFT JOIN productos p ON c.producto_id = p.producto_id
-//       ORDER BY c.fecha DESC
-//     `);
-//     res.json(result.rows);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// });
-
 app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
@@ -546,6 +526,73 @@ app.post('/comentarios', async (req, res) => {
     res.status(201).json({ mensaje: 'Comentario enviado' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+
+// --- ENDPOINTS PARA UBICACIONES ---
+
+// Obtener todos los departamentos
+app.get('/departamentos', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM departamentos ORDER BY depar ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Obtener municipios (filtrados por departamento si se desea)
+app.get('/municipios', async (req, res) => {
+  const { departamento_id } = req.query;
+  try {
+    let query = 'SELECT * FROM municipios';
+    let params = [];
+    if (departamento_id) {
+      query += ' WHERE departamentosid = $1';
+      params.push(departamento_id);
+    }
+    query += ' ORDER BY nombremunicipio ASC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- REGISTRO DE USUARIO ACTUALIZADO CON DEPARTAMENTO Y MUNICIPIO ---
+app.post('/usuarios', async (req, res) => {
+  const { nombre, correo, password, rol, nombreTienda, direccionTienda, departamentoTienda, municipioTienda } = req.body;
+  
+  if (correo.toLowerCase().endsWith('@tiendasv.com')) {
+    return res.status(403).json({ error: 'Dominio reservado para administradores.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    let sucursalId = null;
+
+    if (rol === 'vendedor') {
+      const resTienda = await client.query(
+        'INSERT INTO sucursales (nombre, direccion, departamento, municipio, activo) VALUES ($1, $2, $3, $4, true) RETURNING sucursal_id',
+        [nombreTienda, direccionTienda, departamentoTienda, municipioTienda]
+      );
+      sucursalId = resTienda.rows[0].sucursal_id;
+    }
+
+    await client.query(
+      'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id, activo) VALUES ($1, $2, $3, $4, $5, true)',
+      [nombre, correo, password, rol || 'cliente', sucursalId]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
