@@ -477,6 +477,35 @@ app.get('/admin/comentarios', async (req, res) => {
   }
 });
 
+app.get('/ventas/historial', async (req, res) => {
+  const { usuario_id, sucursal_id } = req.query;
+  try {
+    let query = `
+      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id,
+             p.sucursal_id, s.nombre as sucursal_nombre
+      FROM movimientos m
+      JOIN productos p ON m.producto_id = p.producto_id
+      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      WHERE m.tipo = 'salida'
+    `;
+    
+    let params = [];
+    if (usuario_id && (!sucursal_id || sucursal_id === 'null')) {
+        params.push(usuario_id);
+        query += ` AND m.usuario_id = $${params.length}`;
+    } else if (sucursal_id && sucursal_id !== 'null') {
+        params.push(sucursal_id);
+        query += ` AND p.sucursal_id = $${params.length}`;
+    }
+
+    query += ` ORDER BY m.fecha DESC`;
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
