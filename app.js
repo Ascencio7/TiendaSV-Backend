@@ -457,6 +457,26 @@ app.delete('/admin/sucursales/:id', async (req, res) => {
   }
 });
 
+app.get('/admin/comentarios', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT c.*, 
+             u.nombre as cliente_nombre, 
+             s.nombre as sucursal_nombre, 
+             p.nombre as producto_nombre,
+             (SELECT nombre FROM usuarios WHERE sucursal_id = s.sucursal_id AND rol = 'vendedor' LIMIT 1) as responsable_nombre
+      FROM comentarios c
+      JOIN usuarios u ON c.usuario_id = u.usuario_id
+      JOIN sucursales s ON c.sucursal_id = s.sucursal_id
+      LEFT JOIN productos p ON c.producto_id = p.producto_id
+      ORDER BY c.fecha DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
