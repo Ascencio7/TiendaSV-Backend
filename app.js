@@ -273,10 +273,10 @@ app.get('/ventas/historial', async (req, res) => {
   }
 });
 
-// --- COMENTARIOS PARA EL ADMINISTRADOR (CORREGIDO) ---
 app.get('/admin/comentarios', async (req, res) => {
+  const { sucursal_id } = req.query; // Capturamos el filtro enviado por la App
   try {
-    const result = await pool.query(`
+    let query = `
       SELECT c.*, 
              u.nombre as cliente_nombre, 
              s.nombre as sucursal_nombre, 
@@ -286,11 +286,21 @@ app.get('/admin/comentarios', async (req, res) => {
       JOIN usuarios u ON c.usuario_id = u.usuario_id
       JOIN sucursales s ON c.sucursal_id = s.sucursal_id
       LEFT JOIN productos p ON c.producto_id = p.producto_id
-      ORDER BY c.fecha DESC
-    `);
+    `;
+    
+    let params = [];
+    // FILTRO VITAL: Solo mostramos comentarios de la tienda seleccionada
+    if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0') {
+      params.push(sucursal_id);
+      query += ` WHERE c.sucursal_id = $1`;
+    }
+
+    query += ` ORDER BY c.fecha DESC`;
+    
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
-    console.error("ERROR ADMIN COMMENTS:", err.message);
+    console.error("ERROR COMMENTS:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
