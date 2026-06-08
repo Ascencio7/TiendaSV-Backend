@@ -506,6 +506,20 @@ app.get('/ventas/historial', async (req, res) => {
   }
 });
 
+app.post('/comentarios', async (req, res) => {
+  // Aceptamos producto_id en el body
+  const { sucursal_id, usuario_id, producto_id, texto, calificacion } = req.body;
+  try {
+    await pool.query(
+      'INSERT INTO comentarios (sucursal_id, usuario_id, producto_id, texto, calificacion) VALUES ($1, $2, $3, $4, $5)',
+      [sucursal_id, usuario_id, producto_id, texto, calificacion]
+    );
+    res.status(201).json({ mensaje: 'Comentario enviado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
