@@ -445,6 +445,34 @@ app.delete('/admin/sucursales/:id', async (req, res) => {
   }
 });
 
+// --- ELIMINACIÓN PERMANENTE DE USUARIOS (ADMIN) ---
+
+app.delete('/admin/usuarios/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Intentamos eliminar el usuario de la base de datos
+    const result = await pool.query('DELETE FROM usuarios WHERE usuario_id = $1 RETURNING *', [id]);
+
+    if (result.rows.length > 0) {
+      res.status(200).json({ mensaje: 'Usuario eliminado permanentemente del sistema' });
+    } else {
+      res.status(404).json({ error: 'El usuario no existe' });
+    }
+  } catch (err) {
+    console.error("ERROR DELETE USER:", err.message);
+    
+    // Manejo de error por integridad referencial (si el usuario tiene productos o ventas asociadas)
+    if (err.code === '23503') {
+      res.status(400).json({ 
+        error: 'No se puede eliminar: El usuario tiene registros vinculados (ventas o inventario). Se recomienda mantenerlo como Inactivo.' 
+      });
+    } else {
+      res.status(500).json({ error: 'Error interno al intentar eliminar el usuario' });
+    }
+  }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
