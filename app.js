@@ -239,13 +239,9 @@ app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
     let query = `
-      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id,
-             p.sucursal_id, s.nombre as sucursal_nombre,
-             c.texto as comentario_texto, c.calificacion as comentario_calificacion
+      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
-      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      LEFT JOIN comentarios c ON c.usuario_id = m.usuario_id AND c.producto_id = m.producto_id AND c.sucursal_id = p.sucursal_id
       WHERE m.tipo = 'salida'
     `;
     
