@@ -443,15 +443,15 @@ app.post('/usuarios', async (req, res) => {
     return res.status(403).json({ error: 'Dominio reservado para administradores.' });
   }
 
-  const client = await pool.connect();
+const client = await pool.connect();
   try {
     await client.query('BEGIN');
     let sucursalId = null;
 
     if (rol === 'vendedor') {
       const resTienda = await client.query(
-        'INSERT INTO sucursales (nombre, direccion, departamento, municipio, activo) VALUES ($1, $2, $3, $4, true) RETURNING sucursal_id',
-        [nombreTienda, direccionTienda, departamentoTienda, municipioTienda]
+        'INSERT INTO sucursales (nombre, direccion, departamento, municipio, latitud, longitud, activo) VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING sucursal_id',
+        [nombreTienda, direccionTienda, departamentoTienda, municipioTienda, latitud, longitud]
       );
       sucursalId = resTienda.rows[0].sucursal_id;
     }
@@ -545,41 +545,6 @@ app.get('/municipios', async (req, res) => {
   }
 });
 
-// --- REGISTRO DE USUARIO ACTUALIZADO CON DEPARTAMENTO Y MUNICIPIO ---
-// app.post('/usuarios', async (req, res) => {
-//   const { nombre, correo, password, rol, nombreTienda, direccionTienda, departamentoTienda, municipioTienda } = req.body;
-  
-//   if (correo.toLowerCase().endsWith('@tiendasv.com')) {
-//     return res.status(403).json({ error: 'Dominio reservado para administradores.' });
-//   }
-
-//   const client = await pool.connect();
-//   try {
-//     await client.query('BEGIN');
-//     let sucursalId = null;
-
-//     if (rol === 'vendedor') {
-//       const resTienda = await client.query(
-//         'INSERT INTO sucursales (nombre, direccion, departamento, municipio, activo) VALUES ($1, $2, $3, $4, true) RETURNING sucursal_id',
-//         [nombreTienda, direccionTienda, departamentoTienda, municipioTienda]
-//       );
-//       sucursalId = resTienda.rows[0].sucursal_id;
-//     }
-
-//     await client.query(
-//       'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id, activo) VALUES ($1, $2, $3, $4, $5, true)',
-//       [nombre, correo, password, rol || 'cliente', sucursalId]
-//     );
-
-//     await client.query('COMMIT');
-//     res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
-//   } catch (err) {
-//     await client.query('ROLLBACK');
-//     res.status(400).json({ error: err.message });
-//   } finally {
-//     client.release();
-//   }
-// });
 
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
