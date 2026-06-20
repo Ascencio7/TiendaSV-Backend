@@ -501,16 +501,19 @@ app.get('/ventas/historial', async (req, res) => {
 app.post('/comentarios', async (req, res) => {
   const { sucursal_id, usuario_id, producto_id, texto, calificacion } = req.body;
   try {
-    // Esto actualiza si ya existe el comentario para ese usuario/producto, o inserta si no.
     await pool.query(
       `INSERT INTO comentarios (sucursal_id, usuario_id, producto_id, texto, calificacion) 
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (usuario_id, producto_id) 
-       DO UPDATE SET texto = EXCLUDED.texto, calificacion = EXCLUDED.calificacion`,
+       DO UPDATE SET 
+          texto = EXCLUDED.texto, 
+          calificacion = EXCLUDED.calificacion,
+          fecha = NOW()`, // Actualizamos también la fecha
       [sucursal_id, usuario_id, producto_id, texto, calificacion]
     );
-    res.status(201).json({ mensaje: 'Comentario guardado' });
+    res.status(201).json({ mensaje: 'Operación exitosa' });
   } catch (err) {
+    console.error("Error en Upsert:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
