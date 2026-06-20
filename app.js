@@ -196,43 +196,43 @@ app.post('/ventas', async (req, res) => {
 });
 
 // --- HISTORIAL DE VENTAS Y ESTADÍSTICAS (CORREGIDO) ---
-app.get('/ventas/historial', async (req, res) => {
-  const { usuario_id, sucursal_id } = req.query;
-  try {
-    let query = `
-      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id,
-             p.sucursal_id, s.nombre as sucursal_nombre,
-             c.texto as comentario_texto, c.calificacion as comentario_calificacion
-      FROM movimientos m
-      JOIN productos p ON m.producto_id = p.producto_id
-      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      LEFT JOIN comentarios c ON c.usuario_id = m.usuario_id AND c.producto_id = m.producto_id
-      WHERE m.tipo = 'salida'
-    `;
+// app.get('/ventas/historial', async (req, res) => {
+//   const { usuario_id, sucursal_id } = req.query;
+//   try {
+//     let query = `
+//       SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id,
+//              p.sucursal_id, s.nombre as sucursal_nombre,
+//              c.texto as comentario_texto, c.calificacion as comentario_calificacion
+//       FROM movimientos m
+//       JOIN productos p ON m.producto_id = p.producto_id
+//       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+//       LEFT JOIN comentarios c ON c.usuario_id = m.usuario_id AND c.producto_id = m.producto_id
+//       WHERE m.tipo = 'salida'
+//     `;
     
-    let params = [];
+//     let params = [];
     
-    // Filtro por usuario (Para que el cliente vea sus compras)
-    if (usuario_id && usuario_id !== 'null' && usuario_id !== '0' && usuario_id !== 'undefined') {
-        params.push(usuario_id);
-        query += ` AND m.usuario_id = $${params.length}`;
-    } 
+//     // Filtro por usuario (Para que el cliente vea sus compras)
+//     if (usuario_id && usuario_id !== 'null' && usuario_id !== '0' && usuario_id !== 'undefined') {
+//         params.push(usuario_id);
+//         query += ` AND m.usuario_id = $${params.length}`;
+//     } 
     
-    // Filtro por sucursal (Para estadísticas de Admin/Vendedor)
-    if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0' && sucursal_id !== 'undefined') {
-        params.push(sucursal_id);
-        query += ` AND p.sucursal_id = $${params.length}`;
-    }
+//     // Filtro por sucursal (Para estadísticas de Admin/Vendedor)
+//     if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0' && sucursal_id !== 'undefined') {
+//         params.push(sucursal_id);
+//         query += ` AND p.sucursal_id = $${params.length}`;
+//     }
 
-    query += ` ORDER BY m.fecha DESC`;
+//     query += ` ORDER BY m.fecha DESC`;
     
-    const result = await pool.query(query, params);
-    res.json(result.rows);
-  } catch (err) {
-    console.error("ERROR STATS/HISTORY:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
+//     const result = await pool.query(query, params);
+//     res.json(result.rows);
+//   } catch (err) {
+//     console.error("ERROR STATS/HISTORY:", err.message);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 
 app.get('/admin/comentarios', async (req, res) => {
   const { sucursal_id } = req.query; // Capturamos el filtro enviado por la App
