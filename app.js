@@ -500,15 +500,19 @@ app.get('/ventas/historial', async (req, res) => {
   }
 });
 
+// Sugerencia para archivo app.js
 app.post('/comentarios', async (req, res) => {
-  // Aceptamos producto_id en el body
   const { sucursal_id, usuario_id, producto_id, texto, calificacion } = req.body;
   try {
+    // Esto actualiza si ya existe el comentario para ese usuario/producto, o inserta si no.
     await pool.query(
-      'INSERT INTO comentarios (sucursal_id, usuario_id, producto_id, texto, calificacion) VALUES ($1, $2, $3, $4, $5)',
+      `INSERT INTO comentarios (sucursal_id, usuario_id, producto_id, texto, calificacion) 
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (usuario_id, producto_id) 
+       DO UPDATE SET texto = EXCLUDED.texto, calificacion = EXCLUDED.calificacion`,
       [sucursal_id, usuario_id, producto_id, texto, calificacion]
     );
-    res.status(201).json({ mensaje: 'Comentario enviado' });
+    res.status(201).json({ mensaje: 'Comentario guardado' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
