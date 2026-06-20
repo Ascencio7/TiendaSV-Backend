@@ -206,7 +206,7 @@ app.get('/ventas/historial', async (req, res) => {
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      LEFT JOIN comentarios c ON c.usuario_id = m.usuario_id AND c.producto_id = m.producto_id
+      LEFT JOIN comentarios c ON c.movimiento_id = m.movimiento_id -- VÍNCULO ÚNICO POR COMPRA
       WHERE m.tipo = 'salida'
     `;
     
@@ -225,9 +225,7 @@ app.get('/ventas/historial', async (req, res) => {
     
     const result = await pool.query(query, params);
     res.json(result.rows);
-  } catch (err) {
-    console.error("ERROR STATS/HISTORY:", err.message);
-    res.status(500).json({ error: err.message });
+  } catch (err) { res.status(500).json({ error: err.message });  
   }
 });
 
@@ -499,32 +497,17 @@ app.get('/ventas/historial', async (req, res) => {
 
 // Sugerencia para archivo app.js
 app.post('/comentarios', async (req, res) => {
-  const { sucursal_id, usuario_id, producto_id, texto, calificacion } = req.body;
+  const { sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id } = req.body;
   try {
-    // 1. Buscamos si ya existe
-    const existe = await pool.query(
-      'SELECT comentario_id FROM comentarios WHERE usuario_id = $1 AND producto_id = $2',
-      [usuario_id, producto_id]
+    await pool.query(
+      `INSERT INTO comentarios (sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id) 
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (movimiento_id) 
+       DO UPDATE SET texto = EXCLUDED.texto, calificacion = EXCLUDED.calificacion, fecha = NOW()`,
+      [sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id]
     );
-
-    if (existe.rows.length > 0) {
-      // 2. Si existe, ACTUALIZAMOS (UPDATE)
-      await pool.query(
-        'UPDATE comentarios SET texto = $1, calificacion = $2, fecha = NOW() WHERE comentario_id = $3',
-        [texto, calificacion, existe.rows[0].comentario_id]
-      );
-      res.status(200).json({ mensaje: 'Comentario actualizado' });
-    } else {
-      // 3. Si no existe, INSERTAMOS (INSERT)
-      await pool.query(
-        'INSERT INTO comentarios (sucursal_id, usuario_id, producto_id, texto, calificacion) VALUES ($1, $2, $3, $4, $5)',
-        [sucursal_id, usuario_id, producto_id, texto, calificacion]
-      );
-      res.status(201).json({ mensaje: 'Comentario creado' });
-    }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    res.status(201).json({ mensaje: 'Comentario guardado' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 
