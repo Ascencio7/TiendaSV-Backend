@@ -200,13 +200,16 @@ app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
     let query = `
-      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id,
-             p.sucursal_id, s.nombre as sucursal_nombre,
+      SELECT m.*, p.nombre as producto_nombre, 
+             m.precio_unitario, m.costo_unitario,
+             (m.cantidad * m.precio_unitario) as total,
+             ((m.precio_unitario - m.costo_unitario) * m.cantidad) as ganancia_neta,
+             s.nombre as sucursal_nombre,
              c.comentario_id, c.texto as comentario_texto, c.calificacion as comentario_calificacion
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      LEFT JOIN comentarios c ON c.movimiento_id = m.movimiento_id -- VÍNCULO ÚNICO POR COMPRA
+      LEFT JOIN comentarios c ON c.movimiento_id = m.movimiento_id
       WHERE m.tipo = 'salida'
     `;
     
