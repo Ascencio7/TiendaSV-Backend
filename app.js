@@ -343,7 +343,8 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
   const { activo, rol, usuario_id } = req.query;
   try {
     // IMPORTANTE: Agregamos usuario_id al SELECT
-    let query = `SELECT usuario_id, nombre, correo, rol, activo, creado_en FROM usuarios WHERE 1=1`;
+    // let query = `SELECT usuario_id, nombre, correo, rol, activo, creado_en FROM usuarios WHERE 1=1`;
+    let query = `SELECT usuario_id, nombre, correo, rol, activo, creado_en, foto_perfil FROM usuarios WHERE 1=1`;
     let params = [];
 
     if (activo !== undefined && activo !== '') {
@@ -373,11 +374,10 @@ app.put('/admin/usuarios/:id', async (req, res) => {
   // CAMBIO: Agregamos password y foto_perfil aquí
   const { nombre, correo, password, rol, activo, foto_perfil } = req.body; 
   try {
-    const result = await pool.query(
-      // CAMBIO: Agregamos foto_perfil al UPDATE
-      'UPDATE usuarios SET nombre = $1, correo = $2, password = COALESCE($3, password), foto_perfil = $4, rol = $5, activo = $6 WHERE usuario_id = $7 RETURNING *',
-      [nombre, correo, password, foto_perfil, rol, activo, id]
-    );
+      const result = await pool.query(
+        'UPDATE usuarios SET nombre = $1, correo = $2, password = COALESCE($3, password), foto_perfil = COALESCE($4, foto_perfil), rol = $5, activo = $6 WHERE usuario_id = $7 RETURNING *',
+        [nombre, correo, password, foto_perfil, rol, activo, id]
+      );
 
     if (result.rows.length > 0) {
       res.status(200).json({ mensaje: 'Usuario actualizado correctamente' });
