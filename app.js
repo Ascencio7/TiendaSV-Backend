@@ -28,26 +28,53 @@ pool.connect()
 
 // --- ENDPOINTS PARA USUARIOS ---
 
+// app.post('/login', async (req, res) => {
+//   const { correo, password } = req.body;
+//   try {
+//     const result = await pool.query(
+//       'SELECT usuario_id, nombre, correo, rol, sucursal_id FROM usuarios WHERE correo = $1 AND password = $2',
+//       [correo, password]
+//     );
+
+//     if (result.rows.length > 0) {
+//     // En app.js, dentro de app.post('/login', ...)
+//     res.status(200).json({
+//         mensaje: 'Bienvenido',
+//         usuario_id: result.rows[0].usuario_id,
+//         nombre: result.rows[0].nombre,
+//         rol: result.rows[0].rol,
+//         sucursal_id: result.rows[0].sucursal_id, // <--- ESTO ES VITAL
+//         token: 'token_simulado_123' 
+//     });
+//     } else {
+//       res.status(401).json({ mensaje: 'Credenciales inválidas' });
+//     }
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+
 app.post('/login', async (req, res) => {
   const { correo, password } = req.body;
   try {
     const result = await pool.query(
-      'SELECT usuario_id, nombre, correo, rol, sucursal_id FROM usuarios WHERE correo = $1 AND password = $2',
+      // Agregamos la verificación de 'activo'
+      'SELECT usuario_id, nombre, correo, rol, sucursal_id FROM usuarios WHERE correo = $1 AND password = $2 AND activo = true',
       [correo, password]
     );
 
     if (result.rows.length > 0) {
-    // En app.js, dentro de app.post('/login', ...)
-    res.status(200).json({
-        mensaje: 'Bienvenido',
-        usuario_id: result.rows[0].usuario_id,
-        nombre: result.rows[0].nombre,
-        rol: result.rows[0].rol,
-        sucursal_id: result.rows[0].sucursal_id, // <--- ESTO ES VITAL
-        token: 'token_simulado_123' 
-    });
+      res.status(200).json({
+          mensaje: 'Bienvenido',
+          usuario_id: result.rows[0].usuario_id,
+          nombre: result.rows[0].nombre,
+          rol: result.rows[0].rol,
+          sucursal_id: result.rows[0].sucursal_id,
+          token: 'token_simulado_123' 
+      });
     } else {
-      res.status(401).json({ mensaje: 'Credenciales inválidas' });
+      res.status(401).json({ mensaje: 'Credenciales inválidas o cuenta desactivada' });
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
