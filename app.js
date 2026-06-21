@@ -54,33 +54,6 @@ app.post('/login', async (req, res) => {
   }
 });
 
-
-// app.post('/login', async (req, res) => {
-//   const { correo, password } = req.body;
-//   try {
-//     const result = await pool.query(
-//       // Agregamos la verificación de 'activo'
-//       'SELECT usuario_id, nombre, correo, rol, sucursal_id FROM usuarios WHERE correo = $1 AND password = $2 AND activo = true',
-//       [correo, password]
-//     );
-
-//     if (result.rows.length > 0) {
-//       res.status(200).json({
-//           mensaje: 'Bienvenido',
-//           usuario_id: result.rows[0].usuario_id,
-//           nombre: result.rows[0].nombre,
-//           rol: result.rows[0].rol,
-//           sucursal_id: result.rows[0].sucursal_id,
-//           token: 'token_simulado_123' 
-//       });
-//     } else {
-//       res.status(401).json({ mensaje: 'Credenciales inválidas o cuenta desactivada' });
-//     }
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// });
-
 // --- ENDPOINT EXCLUSIVO PARA ADMIN (Crea otros Admins) ---
 app.post('/admin/crear-admin', async (req, res) => {
   const { nombre, correo, password } = req.body;
@@ -222,44 +195,18 @@ app.post('/ventas', async (req, res) => {
   }
 });
 
-
-// app.post('/ventas', async (req, res) => {
-//   const { producto_id, usuario_id, cantidad } = req.body;
-//   const client = await pool.connect();
-//   try {
-//     await client.query('BEGIN');
-//     // Obtenemos precio y costo actual del producto
-//     const prod = await client.query('SELECT precio, costo, stock FROM productos WHERE producto_id = $1', [producto_id]);
-    
-//     if (prod.rows[0].stock < cantidad) throw new Error('Stock insuficiente');
-
-//     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
-    
-//     // Guardamos la venta con el precio y costo que tiene HOY
-//     await client.query(
-//       'INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, precio_unitario, costo_unitario) VALUES ($1, $2, $3, $4, $5, $6)',
-//       [producto_id, usuario_id, 'salida', cantidad, prod.rows[0].precio, prod.rows[0].costo]
-//     );
-//     await client.query('COMMIT');
-//     res.status(201).json({ mensaje: "Venta exitosa" });
-//   } catch (err) {
-//     await client.query('ROLLBACK');
-//     res.status(500).json({ error: err.message });
-//   } finally { client.release(); }
-// });
-
 // --- HISTORIAL DE VENTAS Y ESTADÍSTICAS (CORREGIDO) ---
 app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
     let query = `
-          SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id,
+      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id,
              p.sucursal_id, s.nombre as sucursal_nombre,
              c.comentario_id, c.texto as comentario_texto, c.calificacion as comentario_calificacion
-             FROM movimientos m
+      FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      LEFT JOIN comentarios c ON c.movimiento_id = m.movimiento_id
+      LEFT JOIN comentarios c ON c.movimiento_id = m.movimiento_id -- VÍNCULO ÚNICO POR COMPRA
       WHERE m.tipo = 'salida'
     `;
     
