@@ -370,10 +370,11 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
 // --- ENDPOINT PARA ACTUALIZAR USUARIO (Incluye Edición y Desactivación) ---
 app.put('/admin/usuarios/:id', async (req, res) => {
   const { id } = req.params;
-  // CAMBIO: Agregamos password y foto_perfil aquí para que Node.js los reconozca
-  const { nombre, correo, password, foto_perfil, rol, activo } = req.body; 
+  // CAMBIO: Agregamos password y foto_perfil aquí
+  const { nombre, correo, password, rol, activo, foto_perfil } = req.body; 
   try {
     const result = await pool.query(
+      // CAMBIO: Agregamos foto_perfil al UPDATE
       'UPDATE usuarios SET nombre = $1, correo = $2, password = COALESCE($3, password), foto_perfil = $4, rol = $5, activo = $6 WHERE usuario_id = $7 RETURNING *',
       [nombre, correo, password, foto_perfil, rol, activo, id]
     );
