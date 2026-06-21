@@ -172,27 +172,53 @@ app.get('/sucursales', async (req, res) => {
 
 // --- VENTAS ---
 
+// app.post('/ventas', async (req, res) => {
+//   const { producto_id, usuario_id, cantidad, precio_unitario } = req.body;
+//   const client = await pool.connect();
+//   try {
+//     await client.query('BEGIN');
+//     const resStock = await client.query('SELECT stock FROM productos WHERE producto_id = $1', [producto_id]);
+//     if (resStock.rows[0].stock < cantidad) throw new Error('Stock insuficiente');
+
+//     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
+//     await client.query(
+//       'INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, fecha) VALUES ($1, $2, $3, $4, NOW())',
+//       [producto_id, usuario_id, 'salida', cantidad]
+//     );
+//     await client.query('COMMIT');
+//     res.status(201).json({ mensaje: "Venta realizada con éxito" });
+//   } catch (err) {
+//     await client.query('ROLLBACK');
+//     res.status(500).json({ error: err.message });
+//   } finally {
+//     client.release();
+//   }
+// });
+
+
 app.post('/ventas', async (req, res) => {
-  const { producto_id, usuario_id, cantidad, precio_unitario } = req.body;
+  const { producto_id, usuario_id, cantidad } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const resStock = await client.query('SELECT stock FROM productos WHERE producto_id = $1', [producto_id]);
-    if (resStock.rows[0].stock < cantidad) throw new Error('Stock insuficiente');
+    // Obtenemos precio y costo actual del producto
+    const prod = await client.query('SELECT precio, costo, stock FROM productos WHERE producto_id = $1', [producto_id]);
+    
+    if (prod.rows[0].stock < cantidad) throw new Error('Stock insuficiente');
 
     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
+    
+    // Guardamos la venta con el precio y costo que tiene HOY
     await client.query(
-      'INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, fecha) VALUES ($1, $2, $3, $4, NOW())',
-      [producto_id, usuario_id, 'salida', cantidad]
+      'INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, precio_unitario, costo_unitario) VALUES ($1, $2, $3, $4, $5, $6)',
+      [producto_id, usuario_id, 'salida', cantidad, prod.rows[0].precio, prod.rows[0].costo]
     );
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: "Venta realizada con éxito" });
+    res.status(201).json({ mensaje: "Venta exitosa" });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
+  } finally { client.release(); }
 });
 
 // --- HISTORIAL DE VENTAS Y ESTADÍSTICAS (CORREGIDO) ---
