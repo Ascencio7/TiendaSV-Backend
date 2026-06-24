@@ -509,8 +509,6 @@ app.get('/municipios', async (req, res) => {
 app.get('/repartidor/pedidos', async (req, res) => {
   const { sucursal_id, repartidor_id } = req.query;
   try {
-    // El repartidor ve pedidos de SU tienda que no tienen repartidor, 
-    // O pedidos que le fueron asignados a él directamente.
     const result = await pool.query(`
       SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre
       FROM movimientos m
@@ -560,50 +558,54 @@ app.post('/repartidor/solicitar', async (req, res) => {
 });
 
 // Obtener repartidores vinculados/aceptados de una tienda específica
+app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT s.solicitud_id, s.repartidor_id, s.sucursal_id, s.estado, 
+              u.nombre as repartidor_nombre, u.correo as repartidor_correo 
+       FROM solicitudes_repartidor s
+       JOIN usuarios u ON s.repartidor_id = u.usuario_id
+       WHERE s.sucursal_id = $1 AND s.estado = 'pendiente'`,
+      [req.params.sucursal_id]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 2. Ver repartidores ya aceptados (Pestaña 2 - ESTO ES LO QUE TE FALTA)
 app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT usuario_id, nombre, correo, activo 
        FROM usuarios 
-       WHERE sucursal_id = $1 AND rol = 'repartidor' AND activo = true`,
+       WHERE sucursal_id = $1 AND rol = 'repartidor'`,
       [req.params.sucursal_id]
     );
     res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Aceptar o Rechazar solicitud
+
+// 3. Aceptar o Rechazar solicitud
 app.put('/vendedor/solicitudes/:id', async (req, res) => {
   const { estado, sucursal_id, repartidor_id } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Actualizar estado de solicitud
+    await client.query('UPDATE solicitudes_repartidor SET estado = $1 WHERE solicitud_id = $2', [estado, req.params.id]);
     
-    // 1. Actualizar el estado en la tabla de solicitudes
-    await client.query(
-      'UPDATE solicitudes_repartidor SET estado = $1 WHERE solicitud_id = $2', 
-      [estado, req.params.id]
-    );
-    
-    // 2. Si es aceptado, vinculamos al repartidor a la tienda en la tabla usuarios
+    // Si se acepta, vinculamos al repartidor a la tienda en la tabla usuarios
     if (estado === 'aceptado') {
-      await client.query(
-        'UPDATE usuarios SET sucursal_id = $1 WHERE usuario_id = $2', 
-        [sucursal_id, repartidor_id]
-      );
+      await client.query('UPDATE usuarios SET sucursal_id = $1 WHERE usuario_id = $2', [sucursal_id, repartidor_id]);
     }
-    
     await client.query('COMMIT');
-    res.json({ mensaje: `Solicitud ${estado} correctamente` });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
+    res.json({ mensaje: `Solicitud ${estado}` });
+  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
+  finally { client.release(); }
 });
+
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
