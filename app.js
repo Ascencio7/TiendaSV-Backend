@@ -602,6 +602,45 @@ app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- GESTIÓN DE REPARTIDORES ---
+
+// Enviar solicitud de unión
+app.post('/repartidor/solicitar', async (req, res) => {
+  const { repartidor_id, sucursal_id } = req.body;
+  try {
+    await pool.query(
+      'INSERT INTO solicitudes_repartidor (repartidor_id, sucursal_id) VALUES ($1, $2)',
+      [repartidor_id, sucursal_id]
+    );
+    res.status(201).json({ mensaje: 'Solicitud enviada' });
+  } catch (err) { res.status(400).json({ error: 'Ya existe una solicitud pendiente' }); }
+});
+
+// Ver solicitudes para una tienda (Vendedor)
+app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT s.*, u.nombre as repartidor_nombre, u.correo as repartidor_correo 
+       FROM solicitudes_repartidor s
+       JOIN usuarios u ON s.repartidor_id = u.usuario_id
+       WHERE s.sucursal_id = $1 AND s.estado = 'pendiente'`,
+      [req.params.sucursal_id]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Aceptar o Rechazar solicitud
+app.put('/vendedor/solicitudes/:id', async (req, res) => {
+  const { estado, sucursal_id, repartidor_id } = req.body;
+  try {
+    await pool.query('UPDATE solicitudes_repartidor SET estado = $1 WHERE solicitud_id = $2', [estado, req.params.id]);
+    if (estado === 'aceptado') {
+      await pool.query('UPDATE usuarios SET sucursal_id = $1 WHERE usuario_id = $2', [sucursal_id, repartidor_id]);
+    }
+    res.json({ mensaje: 'Procesado con éxito' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
