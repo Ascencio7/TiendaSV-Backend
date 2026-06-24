@@ -195,28 +195,99 @@ app.get('/sucursales', async (req, res) => {
 //   }
 // });
 
+// app.post('/ventas', async (req, res) => {
+//   const { producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto } = req.body;
+//   const client = await pool.connect();
+//   try {
+//     await client.query('BEGIN');
+//     const resStock = await client.query('SELECT stock FROM productos WHERE producto_id = $1', [producto_id]);
+//     if (resStock.rows[0].stock < cantidad) throw new Error('Stock insuficiente');
+
+//     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
+//     await client.query(
+//       `INSERT INTO movimientos 
+//        (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega) 
+//        VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8)`,
+//       [producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, entregaDomicilio ? 'Pendiente' : 'Completado']
+//     );
+//     await client.query('COMMIT');
+//     res.status(201).json({ mensaje: "Venta realizada con éxito" });
+//   } catch (err) {
+//     await client.query('ROLLBACK');
+//     res.status(500).json({ error: err.message });
+//   } finally { client.release(); }
+// });
+
+
+
+// --- PROCESAMIENTO DE VENTAS Y ENTREGAS ---
+
 app.post('/ventas', async (req, res) => {
-  const { producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto } = req.body;
+  const { 
+    producto_id, 
+    usuario_id, 
+    cantidad, 
+    metodoPago, 
+    entregaDomicilio, 
+    direccionEntrega, 
+    telefonoContacto, 
+    repartidor_id 
+  } = req.body;
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const resStock = await client.query('SELECT stock FROM productos WHERE producto_id = $1', [producto_id]);
+
+    // 1. Verificar si hay stock suficiente
+    const resStock = await client.query(
+      'SELECT stock FROM productos WHERE producto_id = $1', 
+      [producto_id]
+    );
+
+    if (resStock.rows.length === 0) throw new Error('Producto no encontrado');
     if (resStock.rows[0].stock < cantidad) throw new Error('Stock insuficiente');
 
-    await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
+    // 2. Descontar del inventario
+    await client.query(
+      'UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', 
+      [cantidad, producto_id]
+    );
+
+    // 3. Registrar el movimiento (Venta) con los datos del repartidor y entrega
+    // El estado_entrega es 'Pendiente' si es a domicilio, o 'Completado' si es venta directa
+    const estadoInicial = entregaDomicilio ? 'Pendiente' : 'Completado';
+
     await client.query(
       `INSERT INTO movimientos 
-       (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega) 
-       VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8)`,
-      [producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, entregaDomicilio ? 'Pendiente' : 'Completado']
+       (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id) 
+       VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8, $9)`,
+      [
+        producto_id, 
+        usuario_id, 
+        cantidad, 
+        metodoPago, 
+        entregaDomicilio, 
+        direccionEntrega || null, 
+        telefonoContacto || null, 
+        estadoInicial, 
+        repartidor_id || null // Aquí se guarda el repartidor que el cliente seleccionó
+      ]
     );
+
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: "Venta realizada con éxito" });
+    res.status(201).json({ mensaje: "Venta registrada con éxito" });
+
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error("ERROR VENTA:", err.message);
     res.status(500).json({ error: err.message });
-  } finally { client.release(); }
+  } finally {
+    client.release();
+  }
 });
+
+
+
 
 // --- HISTORIAL DE VENTAS Y ESTADÍSTICAS (CORREGIDO) ---
 app.get('/ventas/historial', async (req, res) => {
