@@ -75,7 +75,6 @@ app.post('/admin/crear-admin', async (req, res) => {
 });
 
 // --- ENDPOINTS PARA PRODUCTOS (CRUD) ---
-
 app.get('/productos', async (req, res) => {
   const { sucursal_id, usuario_id } = req.query;
   try {
@@ -127,7 +126,6 @@ app.post('/productos', async (req, res) => {
   }
 });
 
-
 app.put('/productos/:id', async (req, res) => {
   const { id } = req.params;
   const { codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo, sucursal_id } = req.body;
@@ -170,56 +168,6 @@ app.get('/sucursales', async (req, res) => {
   }
 });
 
-// --- VENTAS ---
-
-// app.post('/ventas', async (req, res) => {
-//   const { producto_id, usuario_id, cantidad, precio_unitario } = req.body;
-//   const client = await pool.connect();
-//   try {
-//     await client.query('BEGIN');
-//     const resStock = await client.query('SELECT stock FROM productos WHERE producto_id = $1', [producto_id]);
-//     if (resStock.rows[0].stock < cantidad) throw new Error('Stock insuficiente');
-
-//     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
-//     await client.query(
-//       'INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, fecha) VALUES ($1, $2, $3, $4, NOW())',
-//       [producto_id, usuario_id, 'salida', cantidad]
-//     );
-//     await client.query('COMMIT');
-//     res.status(201).json({ mensaje: "Venta realizada con éxito" });
-//   } catch (err) {
-//     await client.query('ROLLBACK');
-//     res.status(500).json({ error: err.message });
-//   } finally {
-//     client.release();
-//   }
-// });
-
-// app.post('/ventas', async (req, res) => {
-//   const { producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto } = req.body;
-//   const client = await pool.connect();
-//   try {
-//     await client.query('BEGIN');
-//     const resStock = await client.query('SELECT stock FROM productos WHERE producto_id = $1', [producto_id]);
-//     if (resStock.rows[0].stock < cantidad) throw new Error('Stock insuficiente');
-
-//     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
-//     await client.query(
-//       `INSERT INTO movimientos 
-//        (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega) 
-//        VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8)`,
-//       [producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, entregaDomicilio ? 'Pendiente' : 'Completado']
-//     );
-//     await client.query('COMMIT');
-//     res.status(201).json({ mensaje: "Venta realizada con éxito" });
-//   } catch (err) {
-//     await client.query('ROLLBACK');
-//     res.status(500).json({ error: err.message });
-//   } finally { client.release(); }
-// });
-
-
-
 // --- VENTAS: Registro con asignación de repartidor ---
 app.post('/ventas', async (req, res) => {
   const { producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, repartidor_id } = req.body;
@@ -246,10 +194,6 @@ app.post('/ventas', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally { client.release(); }
 });
-
-
-
-
 
 // --- HISTORIAL DE VENTAS Y ESTADÍSTICAS (CORREGIDO) ---
 app.get('/ventas/historial', async (req, res) => {
@@ -317,10 +261,7 @@ app.get('/admin/comentarios', async (req, res) => {
   }
 });
 
-
-
 // --- ENDPOINT PARA RESTABLECER CONTRASEÑA ---
-
 app.put('/usuarios/reset-password', async (req, res) => {
   const { correo, nuevaPassword } = req.body;
 
@@ -347,9 +288,7 @@ app.put('/usuarios/reset-password', async (req, res) => {
   }
 });
 
-
 // --- ENDPOINTS PARA REPORTES ADMINISTRATIVOS MEJORADOS ---
-
 // 1. Reporte de Inventario: Tienda, total productos y valor total
 app.get('/admin/reporte-inventario', async (req, res) => {
   try {
@@ -447,8 +386,6 @@ app.put('/admin/usuarios/:id', async (req, res) => {
 });
 
 // --- GESTIÓN DE TIENDAS (ADMIN) ---
-// --- GESTIÓN DE TIENDAS (ADMIN) ---
-
 // 1. OBTENER TODAS LAS TIENDAS (Activas e Inactivas) - ¡VITAL PARA QUE CARGUEN!
 app.get('/admin/sucursales', async (req, res) => {
   try {
@@ -524,35 +461,6 @@ const client = await pool.connect();
   }
 });
 
-// app.get('/ventas/historial', async (req, res) => {
-//   const { usuario_id, sucursal_id } = req.query;
-//   try {
-//     let query = `
-//       SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id,
-//              p.sucursal_id, s.nombre as sucursal_nombre
-//       FROM movimientos m
-//       JOIN productos p ON m.producto_id = p.producto_id
-//       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-//       WHERE m.tipo = 'salida'
-//     `;
-    
-//     let params = [];
-//     if (usuario_id && (!sucursal_id || sucursal_id === 'null')) {
-//         params.push(usuario_id);
-//         query += ` AND m.usuario_id = $${params.length}`;
-//     } else if (sucursal_id && sucursal_id !== 'null') {
-//         params.push(sucursal_id);
-//         query += ` AND p.sucursal_id = $${params.length}`;
-//     }
-
-//     query += ` ORDER BY m.fecha DESC`;
-//     const result = await pool.query(query, params);
-//     res.json(result.rows);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// });
-
 // Sugerencia para archivo app.js
 app.post('/comentarios', async (req, res) => {
   const { sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id } = req.body;
@@ -568,9 +476,7 @@ app.post('/comentarios', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-
 // --- ENDPOINTS PARA UBICACIONES ---
-
 // Obtener todos los departamentos
 app.get('/departamentos', async (req, res) => {
   try {
@@ -653,18 +559,19 @@ app.post('/repartidor/solicitar', async (req, res) => {
   } catch (err) { res.status(400).json({ error: 'Ya existe una solicitud pendiente' }); }
 });
 
-// Ver solicitudes para una tienda (Vendedor)
-app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
+// Obtener repartidores vinculados/aceptados de una tienda específica
+app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.*, u.nombre as repartidor_nombre, u.correo as repartidor_correo 
-       FROM solicitudes_repartidor s
-       JOIN usuarios u ON s.repartidor_id = u.usuario_id
-       WHERE s.sucursal_id = $1 AND s.estado = 'pendiente'`,
+      `SELECT usuario_id, nombre, correo, activo 
+       FROM usuarios 
+       WHERE sucursal_id = $1 AND rol = 'repartidor' AND activo = true`,
       [req.params.sucursal_id]
     );
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Aceptar o Rechazar solicitud
@@ -674,13 +581,13 @@ app.put('/vendedor/solicitudes/:id', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    // 1. Actualizar estado de la solicitud
+    // 1. Actualizar el estado en la tabla de solicitudes
     await client.query(
       'UPDATE solicitudes_repartidor SET estado = $1 WHERE solicitud_id = $2', 
       [estado, req.params.id]
     );
     
-    // 2. Si se acepta, vincular al repartidor con la sucursal en la tabla usuarios
+    // 2. Si es aceptado, vinculamos al repartidor a la tienda en la tabla usuarios
     if (estado === 'aceptado') {
       await client.query(
         'UPDATE usuarios SET sucursal_id = $1 WHERE usuario_id = $2', 
@@ -693,9 +600,10 @@ app.put('/vendedor/solicitudes/:id', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
-  } finally { client.release(); }
+  } finally {
+    client.release();
+  }
 });
-
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
