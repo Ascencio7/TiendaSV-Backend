@@ -220,71 +220,33 @@ app.get('/sucursales', async (req, res) => {
 
 
 
-// --- PROCESAMIENTO DE VENTAS Y ENTREGAS ---
-
+// --- VENTAS: Registro con asignación de repartidor ---
 app.post('/ventas', async (req, res) => {
-  const { 
-    producto_id, 
-    usuario_id, 
-    cantidad, 
-    metodoPago, 
-    entregaDomicilio, 
-    direccionEntrega, 
-    telefonoContacto, 
-    repartidor_id 
-  } = req.body;
-
+  const { producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, repartidor_id } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    // 1. Verificar si hay stock suficiente
-    const resStock = await client.query(
-      'SELECT stock FROM productos WHERE producto_id = $1', 
-      [producto_id]
-    );
-
-    if (resStock.rows.length === 0) throw new Error('Producto no encontrado');
-    if (resStock.rows[0].stock < cantidad) throw new Error('Stock insuficiente');
-
-    // 2. Descontar del inventario
-    await client.query(
-      'UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', 
-      [cantidad, producto_id]
-    );
-
-    // 3. Registrar el movimiento (Venta) con los datos del repartidor y entrega
-    // El estado_entrega es 'Pendiente' si es a domicilio, o 'Completado' si es venta directa
-    const estadoInicial = entregaDomicilio ? 'Pendiente' : 'Completado';
-
+    
+    // Descontar stock
+    await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
+    
+    // Insertar movimiento con el repartidor específico asignado por el cliente
     await client.query(
       `INSERT INTO movimientos 
        (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id) 
        VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8, $9)`,
-      [
-        producto_id, 
-        usuario_id, 
-        cantidad, 
-        metodoPago, 
-        entregaDomicilio, 
-        direccionEntrega || null, 
-        telefonoContacto || null, 
-        estadoInicial, 
-        repartidor_id || null // Aquí se guarda el repartidor que el cliente seleccionó
-      ]
+      [producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
+       entregaDomicilio ? 'Pendiente' : 'Completado', repartidor_id || null]
     );
-
+    
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: "Venta registrada con éxito" });
-
+    res.status(201).json({ mensaje: "Venta realizada" });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR VENTA:", err.message);
     res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
+  } finally { client.release(); }
 });
+
 
 
 
@@ -637,20 +599,24 @@ app.get('/municipios', async (req, res) => {
   }
 });
 
-
-
-// --- NUEVOS ENDPOINTS PARA REPARTIDOR ---
-
+// --- REPARTIDOR: Ver sus pedidos ---
 app.get('/repartidor/pedidos', async (req, res) => {
+  const { sucursal_id, repartidor_id } = req.query;
   try {
+    // El repartidor ve pedidos de SU tienda que no tienen repartidor, 
+    // O pedidos que le fueron asignados a él directamente.
     const result = await pool.query(`
       SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
       WHERE m.entrega_domicilio = true 
-      AND (m.estado_entrega = 'Pendiente' OR m.estado_entrega = 'En camino')
-      ORDER BY m.fecha DESC`);
+      AND m.estado_entrega != 'Entregado'
+      AND (
+        (p.sucursal_id = $1 AND (m.repartidor_id IS NULL OR m.repartidor_id = 0))
+        OR m.repartidor_id = $2
+      )
+      ORDER BY m.fecha DESC`, [sucursal_id, repartidor_id]);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -704,13 +670,30 @@ app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
 // Aceptar o Rechazar solicitud
 app.put('/vendedor/solicitudes/:id', async (req, res) => {
   const { estado, sucursal_id, repartidor_id } = req.body;
+  const client = await pool.connect();
   try {
-    await pool.query('UPDATE solicitudes_repartidor SET estado = $1 WHERE solicitud_id = $2', [estado, req.params.id]);
+    await client.query('BEGIN');
+    
+    // 1. Actualizar estado de la solicitud
+    await client.query(
+      'UPDATE solicitudes_repartidor SET estado = $1 WHERE solicitud_id = $2', 
+      [estado, req.params.id]
+    );
+    
+    // 2. Si se acepta, vincular al repartidor con la sucursal en la tabla usuarios
     if (estado === 'aceptado') {
-      await pool.query('UPDATE usuarios SET sucursal_id = $1 WHERE usuario_id = $2', [sucursal_id, repartidor_id]);
+      await client.query(
+        'UPDATE usuarios SET sucursal_id = $1 WHERE usuario_id = $2', 
+        [sucursal_id, repartidor_id]
+      );
     }
-    res.json({ mensaje: 'Procesado con éxito' });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    
+    await client.query('COMMIT');
+    res.json({ mensaje: `Solicitud ${estado} correctamente` });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { client.release(); }
 });
 
 
