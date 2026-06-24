@@ -172,8 +172,31 @@ app.get('/sucursales', async (req, res) => {
 
 // --- VENTAS ---
 
+// app.post('/ventas', async (req, res) => {
+//   const { producto_id, usuario_id, cantidad, precio_unitario } = req.body;
+//   const client = await pool.connect();
+//   try {
+//     await client.query('BEGIN');
+//     const resStock = await client.query('SELECT stock FROM productos WHERE producto_id = $1', [producto_id]);
+//     if (resStock.rows[0].stock < cantidad) throw new Error('Stock insuficiente');
+
+//     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
+//     await client.query(
+//       'INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, fecha) VALUES ($1, $2, $3, $4, NOW())',
+//       [producto_id, usuario_id, 'salida', cantidad]
+//     );
+//     await client.query('COMMIT');
+//     res.status(201).json({ mensaje: "Venta realizada con éxito" });
+//   } catch (err) {
+//     await client.query('ROLLBACK');
+//     res.status(500).json({ error: err.message });
+//   } finally {
+//     client.release();
+//   }
+// });
+
 app.post('/ventas', async (req, res) => {
-  const { producto_id, usuario_id, cantidad, precio_unitario } = req.body;
+  const { producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -182,17 +205,17 @@ app.post('/ventas', async (req, res) => {
 
     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
     await client.query(
-      'INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, fecha) VALUES ($1, $2, $3, $4, NOW())',
-      [producto_id, usuario_id, 'salida', cantidad]
+      `INSERT INTO movimientos 
+       (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega) 
+       VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8)`,
+      [producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, entregaDomicilio ? 'Pendiente' : 'Completado']
     );
     await client.query('COMMIT');
     res.status(201).json({ mensaje: "Venta realizada con éxito" });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
+  } finally { client.release(); }
 });
 
 // --- HISTORIAL DE VENTAS Y ESTADÍSTICAS (CORREGIDO) ---
@@ -541,6 +564,42 @@ app.get('/municipios', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+
+
+// --- NUEVOS ENDPOINTS PARA REPARTIDOR ---
+
+app.get('/repartidor/pedidos', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre
+      FROM movimientos m
+      JOIN productos p ON m.producto_id = p.producto_id
+      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      WHERE m.entrega_domicilio = true 
+      AND (m.estado_entrega = 'Pendiente' OR m.estado_entrega = 'En camino')
+      ORDER BY m.fecha DESC`);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
+  const { id } = req.params;
+  const { estado_entrega, repartidor_id } = req.body;
+  try {
+    let query = 'UPDATE movimientos SET estado_entrega = $1';
+    let params = [estado_entrega];
+    if (repartidor_id) {
+      query += ', repartidor_id = $2 WHERE movimiento_id = $3';
+      params.push(repartidor_id, id);
+    } else {
+      query += ' WHERE movimiento_id = $2';
+      params.push(id);
+    }
+    await pool.query(query, params);
+    res.status(200).json({ mensaje: 'Estado actualizado' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 
