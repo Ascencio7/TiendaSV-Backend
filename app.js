@@ -597,6 +597,18 @@ app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
 //   } catch (err) { res.status(500).json({ error: err.message }); }
 // });
 
+app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT usuario_id, nombre, correo, activo 
+       FROM usuarios 
+       WHERE sucursal_id = $1 AND rol = 'repartidor'`,
+      [req.params.sucursal_id]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 
 // Endpoint para que el Vendedor elimine a un repartidor
 app.post('/vendedor/repartidores/eliminar', async (req, res) => {
