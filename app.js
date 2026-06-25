@@ -160,11 +160,11 @@ app.get('/categorias', async (req, res) => {
 });
 
 app.get('/sucursales', async (req, res) => {
-  const { repartidor_id } = req.query; // Capturamos el ID enviado por la App
+  const { repartidor_id } = req.query; // Capturamos el parámetro enviado desde Android
   try {
     let query = `
       SELECT s.*, 
-            (SELECT estado FROM solicitudes_repartidor 
+             (SELECT estado FROM solicitudes_repartidor 
               WHERE sucursal_id = s.sucursal_id AND repartidor_id = $1 LIMIT 1) as estado_solicitud
       FROM sucursales s 
       ORDER BY s.nombre ASC
@@ -557,7 +557,7 @@ app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
 app.post('/repartidor/solicitar', async (req, res) => {
   const { repartidor_id, sucursal_id } = req.body;
   try {
-    // Si ya existía (en estado rechazado o eliminado), la vuelve a poner en 'pendiente'
+    // Si ya existe la combinación repartidor/tienda, actualiza el estado a pendiente
     await pool.query(
       `INSERT INTO solicitudes_repartidor (repartidor_id, sucursal_id, estado) 
        VALUES ($1, $2, 'pendiente')
@@ -565,8 +565,10 @@ app.post('/repartidor/solicitar', async (req, res) => {
        DO UPDATE SET estado = 'pendiente'`,
       [repartidor_id, sucursal_id]
     );
-    res.status(201).json({ mensaje: 'Solicitud enviada' });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    res.status(201).json({ mensaje: 'Solicitud enviada con éxito' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al procesar la solicitud' });
+  }
 });
 
 // Obtener repartidores vinculados/aceptados de una tienda específica
@@ -616,18 +618,18 @@ app.post('/vendedor/repartidores/eliminar', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // 1. Quitamos la tienda asignada al usuario
+    // 1. Quitamos la sucursal asignada al repartidor en la tabla de usuarios
     await client.query(
-      'UPDATE usuarios SET sucursal_id = NULL WHERE usuario_id = $1 AND sucursal_id = $2',
-      [repartidor_id, sucursal_id]
+      'UPDATE usuarios SET sucursal_id = NULL WHERE usuario_id = $1',
+      [repartidor_id]
     );
-    // 2. Cambiamos el estado de la solicitud a 'eliminado'
+    // 2. Cambiamos el estado en la tabla de solicitudes a 'eliminado'
     await client.query(
       "UPDATE solicitudes_repartidor SET estado = 'eliminado' WHERE repartidor_id = $1 AND sucursal_id = $2",
       [repartidor_id, sucursal_id]
     );
     await client.query('COMMIT');
-    res.status(200).json({ mensaje: 'Repartidor eliminado correctamente' });
+    res.status(200).json({ mensaje: 'Repartidor eliminado' });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
