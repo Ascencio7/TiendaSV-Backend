@@ -160,7 +160,7 @@ app.get('/categorias', async (req, res) => {
 });
 
 app.get('/sucursales', async (req, res) => {
-  const { repartidor_id } = req.query;
+  const { repartidor_id } = req.query; // Capturamos el ID enviado por la App
   try {
     let query = `
       SELECT s.*, 
@@ -556,7 +556,7 @@ app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
 app.post('/repartidor/solicitar', async (req, res) => {
   const { repartidor_id, sucursal_id } = req.body;
   try {
-    // Esto inserta si no existe, o actualiza a 'pendiente' si ya existía una vieja
+    // Si ya existía (en estado rechazado o eliminado), la vuelve a poner en 'pendiente'
     await pool.query(
       `INSERT INTO solicitudes_repartidor (repartidor_id, sucursal_id, estado) 
        VALUES ($1, $2, 'pendiente')
@@ -565,9 +565,7 @@ app.post('/repartidor/solicitar', async (req, res) => {
       [repartidor_id, sucursal_id]
     );
     res.status(201).json({ mensaje: 'Solicitud enviada' });
-  } catch (err) { 
-    res.status(500).json({ error: 'Error al procesar la solicitud' }); 
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Obtener repartidores vinculados/aceptados de una tienda específica
@@ -599,19 +597,18 @@ app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
 // });
 
 
-// Endpoint para que el Vendedor elimine a un repartidor de su sucursal
+// Endpoint para que el Vendedor elimine a un repartidor
 app.post('/vendedor/repartidores/eliminar', async (req, res) => {
   const { sucursal_id, repartidor_id } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // 1. Quitamos la vinculación en la tabla de usuarios
+    // 1. Quitamos la tienda asignada al usuario
     await client.query(
       'UPDATE usuarios SET sucursal_id = NULL WHERE usuario_id = $1 AND sucursal_id = $2',
       [repartidor_id, sucursal_id]
     );
-    // 2. Marcamos la solicitud como 'eliminado' para que el repartidor sepa que fue expulsado
-    // O simplemente la borramos para permitir una nueva solicitud limpia
+    // 2. Cambiamos el estado de la solicitud a 'eliminado'
     await client.query(
       "UPDATE solicitudes_repartidor SET estado = 'eliminado' WHERE repartidor_id = $1 AND sucursal_id = $2",
       [repartidor_id, sucursal_id]
