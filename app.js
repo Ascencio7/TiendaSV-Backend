@@ -160,8 +160,15 @@ app.get('/categorias', async (req, res) => {
 });
 
 app.get('/sucursales', async (req, res) => {
+  const { repartidor_id } = req.query;
   try {
-    const result = await pool.query('SELECT * FROM sucursales ORDER BY nombre ASC');
+    let query = `
+      SELECT s.*, 
+             (SELECT estado FROM solicitudes_repartidor WHERE sucursal_id = s.sucursal_id AND repartidor_id = $1 LIMIT 1) as estado_solicitud
+      FROM sucursales s 
+      ORDER BY s.nombre ASC
+    `;
+    const result = await pool.query(query, [repartidor_id || null]);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -549,12 +556,18 @@ app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
 app.post('/repartidor/solicitar', async (req, res) => {
   const { repartidor_id, sucursal_id } = req.body;
   try {
+    // Esto inserta si no existe, o actualiza a 'pendiente' si ya existía una vieja
     await pool.query(
-      'INSERT INTO solicitudes_repartidor (repartidor_id, sucursal_id) VALUES ($1, $2)',
+      `INSERT INTO solicitudes_repartidor (repartidor_id, sucursal_id, estado) 
+       VALUES ($1, $2, 'pendiente')
+       ON CONFLICT (repartidor_id, sucursal_id) 
+       DO UPDATE SET estado = 'pendiente'`,
       [repartidor_id, sucursal_id]
     );
     res.status(201).json({ mensaje: 'Solicitud enviada' });
-  } catch (err) { res.status(400).json({ error: 'Ya existe una solicitud pendiente' }); }
+  } catch (err) { 
+    res.status(500).json({ error: 'Error al procesar la solicitud' }); 
+  }
 });
 
 // Obtener repartidores vinculados/aceptados de una tienda específica
@@ -573,16 +586,42 @@ app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
 });
 
 // 2. Ver repartidores ya aceptados (Pestaña 2 - ESTO ES LO QUE TE FALTA)
-app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
+// app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
+//   try {
+//     const result = await pool.query(
+//       `SELECT usuario_id, nombre, correo, activo 
+//        FROM usuarios 
+//        WHERE sucursal_id = $1 AND rol = 'repartidor'`,
+//       [req.params.sucursal_id]
+//     );
+//     res.json(result.rows);
+//   } catch (err) { res.status(500).json({ error: err.message }); }
+// });
+
+
+// Endpoint para que el Vendedor elimine a un repartidor de su sucursal
+app.post('/vendedor/repartidores/eliminar', async (req, res) => {
+  const { sucursal_id, repartidor_id } = req.body;
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      `SELECT usuario_id, nombre, correo, activo 
-       FROM usuarios 
-       WHERE sucursal_id = $1 AND rol = 'repartidor'`,
-      [req.params.sucursal_id]
+    await client.query('BEGIN');
+    // 1. Quitamos la vinculación en la tabla de usuarios
+    await client.query(
+      'UPDATE usuarios SET sucursal_id = NULL WHERE usuario_id = $1 AND sucursal_id = $2',
+      [repartidor_id, sucursal_id]
     );
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    // 2. Marcamos la solicitud como 'eliminado' para que el repartidor sepa que fue expulsado
+    // O simplemente la borramos para permitir una nueva solicitud limpia
+    await client.query(
+      "UPDATE solicitudes_repartidor SET estado = 'eliminado' WHERE repartidor_id = $1 AND sucursal_id = $2",
+      [repartidor_id, sucursal_id]
+    );
+    await client.query('COMMIT');
+    res.status(200).json({ mensaje: 'Repartidor eliminado correctamente' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { client.release(); }
 });
 
 
