@@ -164,7 +164,8 @@ app.get('/sucursales', async (req, res) => {
   try {
     let query = `
       SELECT s.*, 
-             (SELECT estado FROM solicitudes_repartidor WHERE sucursal_id = s.sucursal_id AND repartidor_id = $1 LIMIT 1) as estado_solicitud
+            (SELECT estado FROM solicitudes_repartidor 
+              WHERE sucursal_id = s.sucursal_id AND repartidor_id = $1 LIMIT 1) as estado_solicitud
       FROM sucursales s 
       ORDER BY s.nombre ASC
     `;
