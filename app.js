@@ -342,30 +342,38 @@ app.get('/admin/reporte-ventas', async (req, res) => {
 });
 
 // 3. Reporte de Usuarios con Filtros (Estado, Rol, Usuario Específico)
+// Reporte de Usuarios con TODOS los campos para Perfil
 app.get('/admin/reporte-usuarios', async (req, res) => {
   const { activo, rol, usuario_id } = req.query;
   try {
     let query = `
-      SELECT usuario_id, nombre, correo, rol, activo, creado_en, foto_perfil,
-             tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-             vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
-             vehiculo_tipo, vehiculo_anio, vehiculo_estado
-      FROM usuarios WHERE 1=1`;
+      SELECT 
+        u.*, 
+        s.nombre as nombre_tienda, 
+        s.direccion as direccion_tienda, 
+        s.departamento as departamento_tienda, 
+        s.municipio as municipio_tienda,
+        s.latitud, s.longitud
+      FROM usuarios u
+      LEFT JOIN sucursales s ON u.sucursal_id = s.sucursal_id
+      WHERE 1=1
+    `;
+    let params = [];
 
     if (activo !== undefined && activo !== '') {
       params.push(activo === 'true');
-      query += ` AND activo = $${params.length}`;
+      query += ` AND u.activo = $${params.length}`;
     }
     if (rol && rol !== 'Todos') {
       params.push(rol.toLowerCase());
-      query += ` AND rol = $${params.length}`;
+      query += ` AND u.rol = $${params.length}`;
     }
     if (usuario_id && usuario_id !== '0') {
       params.push(usuario_id);
-      query += ` AND usuario_id = $${params.length}`;
+      query += ` AND u.usuario_id = $${params.length}`;
     }
 
-    query += ` ORDER BY rol, nombre`;
+    query += ` ORDER BY u.rol, u.nombre`;
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
