@@ -345,10 +345,12 @@ app.get('/admin/reporte-ventas', async (req, res) => {
 app.get('/admin/reporte-usuarios', async (req, res) => {
   const { activo, rol, usuario_id } = req.query;
   try {
-    // IMPORTANTE: Agregamos usuario_id al SELECT
-    // let query = `SELECT usuario_id, nombre, correo, rol, activo, creado_en FROM usuarios WHERE 1=1`;
-    let query = `SELECT usuario_id, nombre, correo, rol, activo, creado_en, foto_perfil FROM usuarios WHERE 1=1`;
-    let params = [];
+    let query = `
+      SELECT usuario_id, nombre, correo, rol, activo, creado_en, foto_perfil,
+             tipo_transporte, bici_marca, bici_color, bici_caracteristica,
+             vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
+             vehiculo_tipo, vehiculo_anio, vehiculo_estado
+      FROM usuarios WHERE 1=1`;
 
     if (activo !== undefined && activo !== '') {
       params.push(activo === 'true');
@@ -372,14 +374,52 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
 });
 
 // --- ENDPOINT PARA ACTUALIZAR USUARIO (Incluye Edición y Desactivación) ---
+// app.put('/admin/usuarios/:id', async (req, res) => {
+//   const { id } = req.params;
+//   // CAMBIO: Agregamos password y foto_perfil aquí
+//   const { nombre, correo, password, rol, activo, foto_perfil } = req.body; 
+//   try {
+//       const result = await pool.query(
+//         'UPDATE usuarios SET nombre = $1, correo = $2, password = COALESCE($3, password), foto_perfil = COALESCE($4, foto_perfil), rol = $5, activo = $6 WHERE usuario_id = $7 RETURNING *',
+//         [nombre, correo, password, foto_perfil, rol, activo, id]
+//       );
+
+//     if (result.rows.length > 0) {
+//       res.status(200).json({ mensaje: 'Usuario actualizado correctamente' });
+//     } else {
+//       res.status(404).json({ error: 'Usuario no encontrado' });
+//     }
+//   } catch (err) {
+//     console.error("ERROR UPDATE USER:", err.message);
+//     res.status(500).json({ error: 'Error al actualizar el usuario' });
+//   }
+// });
+
+
+
 app.put('/admin/usuarios/:id', async (req, res) => {
   const { id } = req.params;
-  // CAMBIO: Agregamos password y foto_perfil aquí
-  const { nombre, correo, password, rol, activo, foto_perfil } = req.body; 
+  const { 
+    nombre, correo, password, rol, activo, foto_perfil,
+    tipo_transporte, bici_marca, bici_color, bici_caracteristica,
+    vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
+    vehiculo_tipo, vehiculo_anio, vehiculo_estado
+  } = req.body; 
   try {
       const result = await pool.query(
-        'UPDATE usuarios SET nombre = $1, correo = $2, password = COALESCE($3, password), foto_perfil = COALESCE($4, foto_perfil), rol = $5, activo = $6 WHERE usuario_id = $7 RETURNING *',
-        [nombre, correo, password, foto_perfil, rol, activo, id]
+        `UPDATE usuarios SET 
+          nombre = $1, correo = $2, password = COALESCE($3, password), 
+          foto_perfil = COALESCE($4, foto_perfil), rol = $5, activo = $6,
+          tipo_transporte = $7, bici_marca = $8, bici_color = $9, bici_caracteristica = $10,
+          vehiculo_marca = $11, vehiculo_modelo = $12, vehiculo_color = $13, vehiculo_placa = $14,
+          vehiculo_tipo = $15, vehiculo_anio = $16, vehiculo_estado = $17
+        WHERE usuario_id = $18 RETURNING *`,
+        [
+          nombre, correo, password, foto_perfil, rol, activo,
+          tipo_transporte, bici_marca, bici_color, bici_caracteristica,
+          vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
+          vehiculo_tipo, vehiculo_anio, vehiculo_estado, id
+        ]
       );
 
     if (result.rows.length > 0) {
@@ -388,10 +428,11 @@ app.put('/admin/usuarios/:id', async (req, res) => {
       res.status(404).json({ error: 'Usuario no encontrado' });
     }
   } catch (err) {
-    console.error("ERROR UPDATE USER:", err.message);
     res.status(500).json({ error: 'Error al actualizar el usuario' });
   }
 });
+
+
 
 // --- GESTIÓN DE TIENDAS (ADMIN) ---
 // 1. OBTENER TODAS LAS TIENDAS (Activas e Inactivas) - ¡VITAL PARA QUE CARGUEN!
@@ -434,14 +475,57 @@ app.put('/admin/sucursales/:id', async (req, res) => {
 });
 
 // --- REGISTRO DE USUARIO (Descomentado y corregido) ---
+// app.post('/usuarios', async (req, res) => {
+//   const { nombre, correo, password, rol, nombreTienda, direccionTienda, departamentoTienda, municipioTienda } = req.body;
+  
+//   if (correo.toLowerCase().endsWith('@tiendasv.com')) {
+//     return res.status(403).json({ error: 'Dominio reservado para administradores.' });
+//   }
+
+// const client = await pool.connect();
+//   try {
+//     await client.query('BEGIN');
+//     let sucursalId = null;
+
+//     if (rol === 'vendedor') {
+//       const resTienda = await client.query(
+//         'INSERT INTO sucursales (nombre, direccion, departamento, municipio, latitud, longitud, activo) VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING sucursal_id',
+//         [nombreTienda, direccionTienda, departamentoTienda, municipioTienda, latitud, longitud]
+//       );
+//       sucursalId = resTienda.rows[0].sucursal_id;
+//     }
+
+//     await client.query(
+//       'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id, activo) VALUES ($1, $2, $3, $4, $5, true)',
+//       [nombre, correo, password, rol || 'cliente', sucursalId]
+//     );
+
+//     await client.query('COMMIT');
+//     res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
+//   } catch (err) {
+//     await client.query('ROLLBACK');
+//     res.status(400).json({ error: err.message });
+//   } finally {
+//     client.release();
+//   }
+// });
+
+
 app.post('/usuarios', async (req, res) => {
-  const { nombre, correo, password, rol, nombreTienda, direccionTienda, departamentoTienda, municipioTienda } = req.body;
+  const { 
+    nombre, correo, password, rol, 
+    nombreTienda, direccionTienda, departamentoTienda, municipioTienda,
+    latitud, longitud, // Agregados
+    tipo_transporte, bici_marca, bici_color, bici_caracteristica,
+    vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
+    vehiculo_tipo, vehiculo_anio, vehiculo_estado
+  } = req.body;
   
   if (correo.toLowerCase().endsWith('@tiendasv.com')) {
     return res.status(403).json({ error: 'Dominio reservado para administradores.' });
   }
 
-const client = await pool.connect();
+  const client = await pool.connect();
   try {
     await client.query('BEGIN');
     let sucursalId = null;
@@ -455,8 +539,18 @@ const client = await pool.connect();
     }
 
     await client.query(
-      'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id, activo) VALUES ($1, $2, $3, $4, $5, true)',
-      [nombre, correo, password, rol || 'cliente', sucursalId]
+      `INSERT INTO usuarios (
+        nombre, correo, password, rol, sucursal_id, activo,
+        tipo_transporte, bici_marca, bici_color, bici_caracteristica,
+        vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
+        vehiculo_tipo, vehiculo_anio, vehiculo_estado
+      ) VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+      [
+        nombre, correo, password, rol || 'cliente', sucursalId,
+        tipo_transporte, bici_marca, bici_color, bici_caracteristica,
+        vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
+        vehiculo_tipo, vehiculo_anio, vehiculo_estado
+      ]
     );
 
     await client.query('COMMIT');
@@ -468,6 +562,10 @@ const client = await pool.connect();
     client.release();
   }
 });
+
+
+
+
 
 // Sugerencia para archivo app.js
 app.post('/comentarios', async (req, res) => {
@@ -576,7 +674,8 @@ app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT s.solicitud_id, s.repartidor_id, s.sucursal_id, s.estado, 
-              u.nombre as repartidor_nombre, u.correo as repartidor_correo 
+              u.nombre as repartidor_nombre, u.correo as repartidor_correo,
+              u.foto_perfil as repartidor_foto, u.tipo_transporte
        FROM solicitudes_repartidor s
        JOIN usuarios u ON s.repartidor_id = u.usuario_id
        WHERE s.sucursal_id = $1 AND s.estado = 'pendiente'`,
@@ -614,24 +713,35 @@ app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
 
 // Endpoint para que el Vendedor elimine a un repartidor
 app.post('/vendedor/repartidores/eliminar', async (req, res) => {
+  // Asegúrate de que estos nombres coincidan con lo que envía Android
   const { sucursal_id, repartidor_id } = req.body;
+  
+  if (!sucursal_id || !repartidor_id) {
+    return res.status(400).json({ error: 'Faltan IDs: sucursal o repartidor' });
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // 1. Quitamos la sucursal asignada al repartidor en la tabla de usuarios
+    
+    // 1. Quitar la vinculación en la tabla usuarios
     await client.query(
       'UPDATE usuarios SET sucursal_id = NULL WHERE usuario_id = $1',
       [repartidor_id]
     );
-    // 2. Cambiamos el estado en la tabla de solicitudes a 'eliminado'
+
+    // 2. IMPORTANTE: En lugar de borrar la solicitud, la marcamos como eliminada
+    // Esto permite que el repartidor vea el mensaje de "VENDEDOR TE ELIMINÓ"
     await client.query(
       "UPDATE solicitudes_repartidor SET estado = 'eliminado' WHERE repartidor_id = $1 AND sucursal_id = $2",
       [repartidor_id, sucursal_id]
     );
+
     await client.query('COMMIT');
-    res.status(200).json({ mensaje: 'Repartidor eliminado' });
+    res.status(200).json({ mensaje: 'Repartidor eliminado con éxito' });
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error("ERROR AL ELIMINAR:", err.message); // Esto saldrá en tu consola de Node.js
     res.status(500).json({ error: err.message });
   } finally { client.release(); }
 });
