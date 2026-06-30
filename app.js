@@ -767,6 +767,26 @@ app.put('/vendedor/solicitudes/:id', async (req, res) => {
 });
 
 
+// Obtener marcas de autos
+app.get('/marcas/autos', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM marcas_autos ORDER BY nombre ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Obtener marcas de motos
+app.get('/marcas/motos', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM marcas_motos ORDER BY nombre ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
