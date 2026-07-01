@@ -519,13 +519,15 @@ app.put('/admin/sucursales/:id', async (req, res) => {
 // });
 
 
+// --- REGISTRO DE USUARIO CORREGIDO ---
 app.post('/usuarios', async (req, res) => {
   const { 
     nombre, correo, password, rol, 
     nombreTienda, direccionTienda, departamentoTienda, municipioTienda,
-    latitud, longitud, // Agregados
+    latitud, longitud,
     tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-    vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
+    auto_marca_id, moto_marca_id, marca_otra, // <--- CORREGIDO
+    vehiculo_modelo, vehiculo_color, vehiculo_placa,
     vehiculo_tipo, vehiculo_anio, vehiculo_estado
   } = req.body;
   
@@ -550,13 +552,15 @@ app.post('/usuarios', async (req, res) => {
       `INSERT INTO usuarios (
         nombre, correo, password, rol, sucursal_id, activo,
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-        vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
+        auto_marca_id, moto_marca_id, marca_otra, // <--- CORREGIDO
+        vehiculo_modelo, vehiculo_color, vehiculo_placa,
         vehiculo_tipo, vehiculo_anio, vehiculo_estado
-      ) VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+      ) VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
       [
         nombre, correo, password, rol || 'cliente', sucursalId,
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-        vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
+        auto_marca_id, moto_marca_id, marca_otra,
+        vehiculo_modelo, vehiculo_color, vehiculo_placa,
         vehiculo_tipo, vehiculo_anio, vehiculo_estado
       ]
     );
