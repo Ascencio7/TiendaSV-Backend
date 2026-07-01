@@ -405,28 +405,47 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
 
 
 
+// --- ENDPOINT PARA ACTUALIZAR USUARIO CORREGIDO ---
 app.put('/admin/usuarios/:id', async (req, res) => {
   const { id } = req.params;
   const { 
     nombre, correo, password, rol, activo, foto_perfil,
     tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-    vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
+    auto_marca_id, moto_marca_id, marca_otra, // <--- CORREGIDO: Usar los nuevos campos
+    vehiculo_modelo, vehiculo_color, vehiculo_placa,
     vehiculo_tipo, vehiculo_anio, vehiculo_estado
   } = req.body; 
+
   try {
       const result = await pool.query(
         `UPDATE usuarios SET 
-          nombre = $1, correo = $2, password = COALESCE($3, password), 
-          foto_perfil = COALESCE($4, foto_perfil), rol = $5, activo = $6,
-          tipo_transporte = $7, bici_marca = $8, bici_color = $9, bici_caracteristica = $10,
-          vehiculo_marca = $11, vehiculo_modelo = $12, vehiculo_color = $13, vehiculo_placa = $14,
-          vehiculo_tipo = $15, vehiculo_anio = $16, vehiculo_estado = $17
-        WHERE usuario_id = $18 RETURNING *`,
+          nombre = $1, 
+          correo = $2, 
+          password = COALESCE($3, password), 
+          foto_perfil = COALESCE($4, foto_perfil), 
+          rol = $5, 
+          activo = $6,
+          tipo_transporte = $7, 
+          bici_marca = $8, 
+          bici_color = $9, 
+          bici_caracteristica = $10,
+          auto_marca_id = $11, 
+          moto_marca_id = $12, 
+          marca_otra = $13,
+          vehiculo_modelo = $14, 
+          vehiculo_color = $15, 
+          vehiculo_placa = $16,
+          vehiculo_tipo = $17, 
+          vehiculo_anio = $18, 
+          vehiculo_estado = $19
+        WHERE usuario_id = $20 RETURNING *`,
         [
           nombre, correo, password, foto_perfil, rol, activo,
           tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-          vehiculo_marca, vehiculo_modelo, vehiculo_color, vehiculo_placa,
-          vehiculo_tipo, vehiculo_anio, vehiculo_estado, id
+          auto_marca_id, moto_marca_id, marca_otra,
+          vehiculo_modelo, vehiculo_color, vehiculo_placa,
+          vehiculo_tipo, vehiculo_anio, vehiculo_estado, 
+          id
         ]
       );
 
@@ -436,7 +455,8 @@ app.put('/admin/usuarios/:id', async (req, res) => {
       res.status(404).json({ error: 'Usuario no encontrado' });
     }
   } catch (err) {
-    res.status(500).json({ error: 'Error al actualizar el usuario' });
+    console.error("ERROR UPDATE:", err.message);
+    res.status(500).json({ error: 'Error al actualizar el usuario: ' + err.message });
   }
 });
 
