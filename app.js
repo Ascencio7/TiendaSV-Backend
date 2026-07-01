@@ -409,9 +409,9 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
 app.put('/admin/usuarios/:id', async (req, res) => {
   const { id } = req.params;
   const { 
-    nombre, correo, password, rol, activo, foto_perfil,
+    nombre, correo, telefono, password, rol, activo, foto_perfil, // <--- AGREGADO TELÉFONO
     tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-    auto_marca_id, moto_marca_id, marca_otra, // <--- CORREGIDO: Usar los nuevos campos
+    auto_marca_id, moto_marca_id, marca_otra,
     vehiculo_modelo, vehiculo_color, vehiculo_placa,
     vehiculo_tipo, vehiculo_anio, vehiculo_estado
   } = req.body; 
@@ -419,28 +419,15 @@ app.put('/admin/usuarios/:id', async (req, res) => {
   try {
       const result = await pool.query(
         `UPDATE usuarios SET 
-          nombre = $1, 
-          correo = $2, 
-          password = COALESCE($3, password), 
-          foto_perfil = COALESCE($4, foto_perfil), 
-          rol = $5, 
-          activo = $6,
-          tipo_transporte = $7, 
-          bici_marca = $8, 
-          bici_color = $9, 
-          bici_caracteristica = $10,
-          auto_marca_id = $11, 
-          moto_marca_id = $12, 
-          marca_otra = $13,
-          vehiculo_modelo = $14, 
-          vehiculo_color = $15, 
-          vehiculo_placa = $16,
-          vehiculo_tipo = $17, 
-          vehiculo_anio = $18, 
-          vehiculo_estado = $19
-        WHERE usuario_id = $20 RETURNING *`,
+          nombre = $1, correo = $2, telefono = $3, password = COALESCE($4, password), 
+          foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
+          tipo_transporte = $8, bici_marca = $9, bici_color = $10, bici_caracteristica = $11,
+          auto_marca_id = $12, moto_marca_id = $13, marca_otra = $14,
+          vehiculo_modelo = $15, vehiculo_color = $16, vehiculo_placa = $17,
+          vehiculo_tipo = $18, vehiculo_anio = $19, vehiculo_estado = $20
+        WHERE usuario_id = $21 RETURNING *`,
         [
-          nombre, correo, password, foto_perfil, rol, activo,
+          nombre, correo, telefono, password, foto_perfil, rol, activo,
           tipo_transporte, bici_marca, bici_color, bici_caracteristica,
           auto_marca_id, moto_marca_id, marca_otra,
           vehiculo_modelo, vehiculo_color, vehiculo_placa,
@@ -455,12 +442,10 @@ app.put('/admin/usuarios/:id', async (req, res) => {
       res.status(404).json({ error: 'Usuario no encontrado' });
     }
   } catch (err) {
-    console.error("ERROR UPDATE:", err.message);
-    res.status(500).json({ error: 'Error al actualizar el usuario: ' + err.message });
+    console.error("ERROR:", err.message);
+    res.status(500).json({ error: 'Error al actualizar' });
   }
 });
-
-
 
 // --- GESTIÓN DE TIENDAS (ADMIN) ---
 // 1. OBTENER TODAS LAS TIENDAS (Activas e Inactivas) - ¡VITAL PARA QUE CARGUEN!
@@ -542,11 +527,11 @@ app.put('/admin/sucursales/:id', async (req, res) => {
 // --- REGISTRO DE USUARIO CORREGIDO ---
 app.post('/usuarios', async (req, res) => {
   const { 
-    nombre, correo, password, rol, 
+    nombre, correo, telefono, password, rol,
     nombreTienda, direccionTienda, departamentoTienda, municipioTienda,
     latitud, longitud,
     tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-    auto_marca_id, moto_marca_id, marca_otra, // <--- CORREGIDO
+    auto_marca_id, moto_marca_id, marca_otra,
     vehiculo_modelo, vehiculo_color, vehiculo_placa,
     vehiculo_tipo, vehiculo_anio, vehiculo_estado
   } = req.body;
@@ -570,14 +555,14 @@ app.post('/usuarios', async (req, res) => {
 
     await client.query(
       `INSERT INTO usuarios (
-        nombre, correo, password, rol, sucursal_id, activo,
+        nombre, correo, telefono, password, rol, sucursal_id, activo, // <--- 2. AGREGAR AQUÍ
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-        auto_marca_id, moto_marca_id, marca_otra, // <--- CORREGIDO
+        auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
         vehiculo_tipo, vehiculo_anio, vehiculo_estado
-      ) VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`, // <--- 3. AJUSTAR $
       [
-        nombre, correo, password, rol || 'cliente', sucursalId,
+        nombre, correo, telefono, password, rol || 'cliente', sucursalId, // <--- 4. AGREGAR AQUÍ
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
         auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
