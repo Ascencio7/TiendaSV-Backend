@@ -381,29 +381,6 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
   }
 });
 
-// --- ENDPOINT PARA ACTUALIZAR USUARIO (Incluye Edición y Desactivación) ---
-// app.put('/admin/usuarios/:id', async (req, res) => {
-//   const { id } = req.params;
-//   // CAMBIO: Agregamos password y foto_perfil aquí
-//   const { nombre, correo, password, rol, activo, foto_perfil } = req.body; 
-//   try {
-//       const result = await pool.query(
-//         'UPDATE usuarios SET nombre = $1, correo = $2, password = COALESCE($3, password), foto_perfil = COALESCE($4, foto_perfil), rol = $5, activo = $6 WHERE usuario_id = $7 RETURNING *',
-//         [nombre, correo, password, foto_perfil, rol, activo, id]
-//       );
-
-//     if (result.rows.length > 0) {
-//       res.status(200).json({ mensaje: 'Usuario actualizado correctamente' });
-//     } else {
-//       res.status(404).json({ error: 'Usuario no encontrado' });
-//     }
-//   } catch (err) {
-//     console.error("ERROR UPDATE USER:", err.message);
-//     res.status(500).json({ error: 'Error al actualizar el usuario' });
-//   }
-// });
-
-
 
 app.put('/admin/usuarios/:id', async (req, res) => {
   const { id } = req.params;
@@ -416,7 +393,6 @@ app.put('/admin/usuarios/:id', async (req, res) => {
   } = req.body; 
 
   try {
-      // IMPORTANTE: Asegúrate que los nombres de las columnas coincidan con tu DB
       const result = await pool.query(
         `UPDATE usuarios SET 
           nombre = $1, correo = $2, telefono = $3, password = COALESCE($4, password), 
@@ -443,7 +419,6 @@ app.put('/admin/usuarios/:id', async (req, res) => {
     }
   } catch (err) {
     console.error("ERROR SQL:", err.message);
-    // Enviamos el mensaje de error real a la App para saber qué columna falla
     res.status(500).json({ error: err.message });
   }
 });
