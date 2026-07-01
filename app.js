@@ -389,37 +389,55 @@ app.put('/admin/usuarios/:id', async (req, res) => {
     tipo_transporte, bici_marca, bici_color, bici_caracteristica,
     auto_marca_id, moto_marca_id, marca_otra,
     vehiculo_modelo, vehiculo_color, vehiculo_placa,
-    vehiculo_tipo, vehiculo_anio, vehiculo_estado
+    vehiculo_tipo, vehiculo_anio, vehiculo_estado,
+    // Campos de tienda enviados desde Android
+    nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda, latitud, longitud
   } = req.body; 
 
+  const client = await pool.connect();
   try {
-      const result = await pool.query(
-        `UPDATE usuarios SET 
-          nombre = $1, correo = $2, telefono = $3, password = COALESCE($4, password), 
-          foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
-          tipo_transporte = $8, bici_marca = $9, bici_color = $10, bici_caracteristica = $11,
-          auto_marca_id = $12, moto_marca_id = $13, marca_otra = $14,
-          vehiculo_modelo = $15, vehiculo_color = $16, vehiculo_placa = $17,
-          vehiculo_tipo = $18, vehiculo_anio = $19, vehiculo_estado = $20
-        WHERE usuario_id = $21 RETURNING *`,
-        [
-          nombre, correo, telefono, password, foto_perfil, rol, activo,
-          tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-          auto_marca_id, moto_marca_id, marca_otra,
-          vehiculo_modelo, vehiculo_color, vehiculo_placa,
-          vehiculo_tipo, vehiculo_anio, vehiculo_estado, 
-          id
-        ]
-      );
+    await client.query('BEGIN');
 
-    if (result.rows.length > 0) {
-      res.status(200).json({ mensaje: 'Usuario actualizado correctamente' });
-    } else {
-      res.status(404).json({ error: 'Usuario no encontrado' });
+    // 1. Actualizar tabla usuarios (Perfil, Teléfono y Transporte)
+    const resUser = await client.query(
+      `UPDATE usuarios SET 
+        nombre = $1, correo = $2, telefono = $3, password = COALESCE($4, password), 
+        foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
+        tipo_transporte = $8, bici_marca = $9, bici_color = $10, bici_caracteristica = $11,
+        auto_marca_id = $12, moto_marca_id = $13, marca_otra = $14,
+        vehiculo_modelo = $15, vehiculo_color = $16, vehiculo_placa = $17,
+        vehiculo_tipo = $18, vehiculo_anio = $19, vehiculo_estado = $20
+      WHERE usuario_id = $21 RETURNING sucursal_id`,
+      [
+        nombre, correo, telefono, password, foto_perfil, rol, activo,
+        tipo_transporte, bici_marca, bici_color, bici_caracteristica,
+        auto_marca_id, moto_marca_id, marca_otra,
+        vehiculo_modelo, vehiculo_color, vehiculo_placa,
+        vehiculo_tipo, vehiculo_anio, vehiculo_estado, 
+        id
+      ]
+    );
+
+    // 2. Si es Vendedor, actualizar también la información de su Tienda (sucursales)
+    if (rol === 'vendedor' && resUser.rows.length > 0 && resUser.rows[0].sucursal_id) {
+      await client.query(
+        `UPDATE sucursales SET 
+          nombre = $1, direccion = $2, departamento = $3, municipio = $4, 
+          latitud = $5, longitud = $6 
+        WHERE sucursal_id = $7`,
+        [nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda, latitud, longitud, resUser.rows[0].sucursal_id]
+      );
     }
+
+    await client.query('COMMIT');
+    res.status(200).json({ mensaje: 'Perfil y Tienda actualizados correctamente' });
+
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error("ERROR SQL:", err.message);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
