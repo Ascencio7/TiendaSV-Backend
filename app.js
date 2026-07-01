@@ -405,8 +405,6 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
 
 
 
-// --- ENDPOINT PARA ACTUALIZAR USUARIO CORREGIDO ---
-// --- ENDPOINT DE ACTUALIZACIÓN DEFINITIVO ---
 app.put('/admin/usuarios/:id', async (req, res) => {
   const { id } = req.params;
   const { 
@@ -418,28 +416,15 @@ app.put('/admin/usuarios/:id', async (req, res) => {
   } = req.body; 
 
   try {
+      // IMPORTANTE: Asegúrate que los nombres de las columnas coincidan con tu DB
       const result = await pool.query(
         `UPDATE usuarios SET 
-          nombre = $1, 
-          correo = $2, 
-          telefono = $3, 
-          password = COALESCE($4, password), 
-          foto_perfil = COALESCE($5, foto_perfil), 
-          rol = $6, 
-          activo = $7,
-          tipo_transporte = $8, 
-          bici_marca = $9, 
-          bici_color = $10, 
-          bici_caracteristica = $11,
-          auto_marca_id = $12, 
-          moto_marca_id = $13, 
-          marca_otra = $14,
-          vehiculo_modelo = $15, 
-          vehiculo_color = $16, 
-          vehiculo_placa = $17,
-          vehiculo_tipo = $18, 
-          vehiculo_anio = $19, 
-          vehiculo_estado = $20
+          nombre = $1, correo = $2, telefono = $3, password = COALESCE($4, password), 
+          foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
+          tipo_transporte = $8, bici_marca = $9, bici_color = $10, bici_caracteristica = $11,
+          auto_marca_id = $12, moto_marca_id = $13, marca_otra = $14,
+          vehiculo_modelo = $15, vehiculo_color = $16, vehiculo_placa = $17,
+          vehiculo_tipo = $18, vehiculo_anio = $19, vehiculo_estado = $20
         WHERE usuario_id = $21 RETURNING *`,
         [
           nombre, correo, telefono, password, foto_perfil, rol, activo,
@@ -457,8 +442,9 @@ app.put('/admin/usuarios/:id', async (req, res) => {
       res.status(404).json({ error: 'Usuario no encontrado' });
     }
   } catch (err) {
-    console.error("ERROR AL ACTUALIZAR:", err.message);
-    res.status(500).json({ error: 'Error interno: ' + err.message });
+    console.error("ERROR SQL:", err.message);
+    // Enviamos el mensaje de error real a la App para saber qué columna falla
+    res.status(500).json({ error: err.message });
   }
 });
 
