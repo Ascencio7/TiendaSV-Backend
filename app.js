@@ -628,22 +628,25 @@ app.get('/municipios', async (req, res) => {
 
 // --- REPARTIDOR: Ver sus pedidos ---
 app.get('/repartidor/pedidos', async (req, res) => {
-  const { sucursal_id, repartidor_id } = req.query;
+  const { sucursal_id } = req.query;
   try {
     const result = await pool.query(`
-      SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre
+      SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre, 
+             u.nombre as usuario_nombre
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      LEFT JOIN usuarios u ON m.usuario_id = u.usuario_id
       WHERE m.entrega_domicilio = true 
-      AND m.estado_entrega != 'Entregado'
-      AND (
-        (p.sucursal_id = $1 AND (m.repartidor_id IS NULL OR m.repartidor_id = 0))
-        OR m.repartidor_id = $2
-      )
-      ORDER BY m.fecha DESC`, [sucursal_id, repartidor_id]);
+      AND m.estado_entrega = 'Pendiente'
+      AND (m.repartidor_id IS NULL OR m.repartidor_id = 0)
+      AND p.sucursal_id = $1
+      ORDER BY m.fecha DESC`, [sucursal_id]);
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error("Error en pedidos disponibles:", err.message);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
@@ -832,22 +835,22 @@ app.get('/admin/resumen-ventas-detallado', async (req, res) => {
 // --- REPARTIDOR: Ver sus pedidos filtrados por estado (En Camino, Entregado, etc.) ---
 app.get('/repartidor/mis-pedidos', async (req, res) => {
   const { repartidor_id, estado } = req.query; 
-  // 'estado' puede ser 'En Camino' o 'Entregado'
   
   try {
     const result = await pool.query(`
       SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre,
-             u.nombre as usuario_nombre, m.direccion_entrega, m.telefono_contacto
+             u.nombre as usuario_nombre
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      JOIN usuarios u ON m.usuario_id = u.usuario_id
+      LEFT JOIN usuarios u ON m.usuario_id = u.usuario_id
       WHERE m.repartidor_id = $1 
       AND m.estado_entrega = $2
       ORDER BY m.fecha DESC`, [repartidor_id, estado]);
       
     res.json(result.rows);
   } catch (err) { 
+    console.error("Error en mis-pedidos:", err.message);
     res.status(500).json({ error: err.message }); 
   }
 });
