@@ -804,7 +804,7 @@ app.get('/marcas/motos', async (req, res) => {
 
 // --- MÉTODO ACTUALIZADO: Resumen por Tienda ---
 app.get('/admin/resumen-ventas-detallado', async (req, res) => {
-  const { sucursal_id } = req.query; // Capturamos el filtro
+  const { sucursal_id } = req.query;
   try {
     let query = `
       SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
@@ -815,13 +815,11 @@ app.get('/admin/resumen-ventas-detallado', async (req, res) => {
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
       WHERE m.tipo = 'salida'
     `;
-    
     let params = [];
     if (sucursal_id && sucursal_id !== '0') {
       query += ` AND p.sucursal_id = $1`;
       params.push(sucursal_id);
     }
-    
     query += ` ORDER BY m.fecha DESC`;
     const result = await pool.query(query, params);
     res.json(result.rows);
