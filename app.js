@@ -214,17 +214,19 @@ app.get('/ventas/historial', async (req, res) => {
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      LEFT JOIN comentarios c ON c.movimiento_id = m.movimiento_id -- VÍNCULO ÚNICO POR COMPRA
+      LEFT JOIN comentarios c ON c.movimiento_id = m.movimiento_id
       WHERE m.tipo = 'salida'
+      -- LÓGICA VITAL: Solo mostrar si ya se entregó o si no fue a domicilio (venta local)
+      AND (m.entrega_domicilio = false OR m.estado_entrega = 'Entregado')
     `;
     
     let params = [];
-    if (usuario_id && usuario_id !== 'null' && usuario_id !== '0' && usuario_id !== 'undefined') {
+    if (usuario_id && usuario_id !== 'null' && usuario_id !== '0') {
         params.push(usuario_id);
         query += ` AND m.usuario_id = $${params.length}`;
     } 
     
-    if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0' && sucursal_id !== 'undefined') {
+    if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0') {
         params.push(sucursal_id);
         query += ` AND p.sucursal_id = $${params.length}`;
     }
@@ -233,8 +235,7 @@ app.get('/ventas/historial', async (req, res) => {
     
     const result = await pool.query(query, params);
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message });  
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/admin/comentarios', async (req, res) => {
