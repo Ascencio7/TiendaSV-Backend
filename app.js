@@ -969,11 +969,16 @@ app.get('/ventas/:id/seguimiento', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- CLIENTE: Ver solo pedidos activos (Para Seguimiento) ---
+// --- CLIENTE: Ver solo pedidos activos de una tienda específica ---
 app.get('/ventas/activas', async (req, res) => {
-  const { usuario_id } = req.query;
+  const { usuario_id, sucursal_id } = req.query;
+  
+  if (!usuario_id) {
+    return res.status(400).json({ error: "usuario_id es requerido" });
+  }
+
   try {
-    const result = await pool.query(`
+    let query = `
       SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
              s.nombre as sucursal_nombre
       FROM movimientos m
@@ -982,9 +987,24 @@ app.get('/ventas/activas', async (req, res) => {
       WHERE m.usuario_id = $1 
       AND m.entrega_domicilio = true
       AND m.estado_entrega IN ('Pendiente', 'En Camino')
-      ORDER BY m.fecha DESC`, [usuario_id]);
+    `;
+    
+    let params = [usuario_id];
+
+    // LÓGICA VITAL: Filtrar por la tienda donde el usuario está navegando actualmente
+    if (sucursal_id && sucursal_id !== '0' && sucursal_id !== 'null') {
+      params.push(sucursal_id);
+      query += ` AND p.sucursal_id = $2`;
+    }
+
+    query += ` ORDER BY m.fecha DESC`;
+    
+    const result = await pool.query(query, params);
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error("Error en ventas/activas:", err.message);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 
