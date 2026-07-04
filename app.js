@@ -207,33 +207,25 @@ app.post('/ventas', async (req, res) => {
 app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
-    let query = `
-      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, m.usuario_id,
-             p.sucursal_id, s.nombre as sucursal_nombre,
-             c.comentario_id, c.texto as comentario_texto, c.calificacion as comentario_calificacion
+    const result = await pool.query(`
+      SELECT 
+        m.compra_id as movimiento_id_str,
+        MAX(m.movimiento_id) as movimiento_id,
+        STRING_AGG(p.nombre || ' (x' || m.cantidad || ')', ', ') as producto_nombre,
+        SUM(m.cantidad * p.precio) as total,
+        MAX(m.fecha) as fecha,
+        MAX(s.nombre) as sucursal_nombre,
+        MAX(m.estado_entrega) as estado_entrega
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      LEFT JOIN comentarios c ON c.movimiento_id = m.movimiento_id
-      WHERE m.tipo = 'salida'
-      -- LÓGICA VITAL: Solo mostrar si ya se entregó o si no fue a domicilio (venta local)
+      WHERE m.tipo = 'salida' 
+      AND (m.usuario_id = $1 OR $1 IS NULL)
+      AND (p.sucursal_id = $2 OR $2 IS NULL)
       AND (m.entrega_domicilio = false OR m.estado_entrega = 'Entregado')
-    `;
-    
-    let params = [];
-    if (usuario_id && usuario_id !== 'null' && usuario_id !== '0') {
-        params.push(usuario_id);
-        query += ` AND m.usuario_id = $${params.length}`;
-    } 
-    
-    if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0') {
-        params.push(sucursal_id);
-        query += ` AND p.sucursal_id = $${params.length}`;
-    }
-
-    query += ` ORDER BY m.fecha DESC`;
-    
-    const result = await pool.query(query, params);
+      GROUP BY m.compra_id, m.fecha
+      ORDER BY fecha DESC
+    `, [usuario_id || null, sucursal_id || null]);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1024,66 +1016,30 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 
 // --- VENTAS MÚLTIPLES (CARRITO DE COMPRAS) ---
 app.post('/ventas/multiple', async (req, res) => {
-  const { 
-    items, 
-    usuario_id, 
-    metodoPago, 
-    entregaDomicilio, 
-    direccionEntrega, 
-    telefonoContacto, 
-    repartidor_id 
-  } = req.body;
-
-  // Validación básica
-  if (!items || !items.length) {
-    return res.status(400).json({ error: "El carrito está vacío" });
-  }
-
+  const { items, usuario_id, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, repartidor_id } = req.body;
   const client = await pool.connect();
+  const compra_id = `TRX-${Date.now()}`; // Identificador único para agrupar
+
   try {
     await client.query('BEGIN');
-    
     for (const item of items) {
-      // 1. Descontar stock de cada producto individualmente
-      const resStock = await client.query(
-        'UPDATE productos SET stock = stock - $1 WHERE producto_id = $2 AND stock >= $1 RETURNING nombre', 
-        [item.cantidad, item.producto_id]
-      );
-
-      if (resStock.rows.length === 0) {
-        throw new Error(`Stock insuficiente para uno de los productos`);
-      }
-      
-      // 2. Registrar el movimiento/pedido para cada producto del carrito
+      await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [item.cantidad, item.producto_id]);
       await client.query(
         `INSERT INTO movimientos 
-         (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id) 
-         VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8, $9)`,
-        [
-          item.producto_id, 
-          usuario_id, 
-          item.cantidad, 
-          metodoPago, 
-          entregaDomicilio, 
-          direccionEntrega, 
-          telefonoContacto, 
-          entregaDomicilio ? 'Pendiente' : 'Completado', 
-          repartidor_id || null
-        ]
+         (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id) 
+         VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8, $9, $10)`,
+        [item.producto_id, usuario_id, item.cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
+         entregaDomicilio ? 'Pendiente' : 'Completado', repartidor_id || null, compra_id]
       );
     }
-    
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: "Compra múltiple procesada correctamente" });
-    
+    res.status(201).json({ mensaje: "Compra exitosa", compra_id });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR EN VENTA MÚLTIPLE:", err.message);
     res.status(500).json({ error: err.message });
-  } finally { 
-    client.release(); 
-  }
+  } finally { client.release(); }
 });
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
