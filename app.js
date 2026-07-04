@@ -861,6 +861,46 @@ app.get('/repartidor/mis-pedidos', async (req, res) => {
 });
 
 
+// --- NUEVOS MÉTODOS PARA ADMINISTRACIÓN DE REPARTIDORES (ADMIN) ---
+
+// 1. Tiendas que tienen al menos un repartidor vinculado
+app.get('/admin/sucursales-con-repartidores', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT DISTINCT s.* 
+      FROM sucursales s
+      JOIN usuarios u ON s.sucursal_id = u.sucursal_id
+      WHERE u.rol = 'repartidor'
+      ORDER BY s.nombre ASC
+    `);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 2. Detalle completo de un repartidor y su tienda (para el reporte PDF)
+app.get('/admin/detalle-repartidor/:usuario_id', async (req, res) => {
+  const { usuario_id } = req.params;
+  try {
+    const query = `
+      SELECT 
+        u.*, 
+        ma.nombre as auto_marca_nombre, mm.nombre as moto_marca_nombre,
+        s.nombre as tienda_nombre, s.direccion as tienda_direccion, 
+        s.departamento as tienda_departamento, s.municipio as tienda_municipio,
+        (SELECT nombre FROM usuarios WHERE sucursal_id = s.sucursal_id AND rol = 'vendedor' LIMIT 1) as vendedor_nombre,
+        (SELECT telefono FROM usuarios WHERE sucursal_id = s.sucursal_id AND rol = 'vendedor' LIMIT 1) as vendedor_telefono
+      FROM usuarios u
+      LEFT JOIN sucursales s ON u.sucursal_id = s.sucursal_id
+      LEFT JOIN marcas_autos ma ON u.auto_marca_id = ma.marca_id
+      LEFT JOIN marcas_motos mm ON u.moto_marca_id = mm.marca_id
+      WHERE u.usuario_id = $1
+    `;
+    const result = await pool.query(query, [usuario_id]);
+    res.json(result.rows[0] || {});
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
