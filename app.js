@@ -711,18 +711,6 @@ app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 2. Ver repartidores ya aceptados (Pestaña 2 - ESTO ES LO QUE TE FALTA)
-// app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
-//   try {
-//     const result = await pool.query(
-//       `SELECT usuario_id, nombre, correo, activo 
-//        FROM usuarios 
-//        WHERE sucursal_id = $1 AND rol = 'repartidor'`,
-//       [req.params.sucursal_id]
-//     );
-//     res.json(result.rows);
-//   } catch (err) { res.status(500).json({ error: err.message }); }
-// });
 
 // --- REPARTIDORES: Obtener lista para el Admin/Vendedor ---
 app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
@@ -893,7 +881,8 @@ app.get('/admin/detalle-repartidor/:usuario_id', async (req, res) => {
         s.nombre as tienda_nombre, s.direccion as tienda_direccion, 
         s.departamento as tienda_departamento, s.municipio as tienda_municipio,
         (SELECT nombre FROM usuarios WHERE sucursal_id = s.sucursal_id AND rol = 'vendedor' LIMIT 1) as vendedor_nombre,
-        (SELECT telefono FROM usuarios WHERE sucursal_id = s.sucursal_id AND rol = 'vendedor' LIMIT 1) as vendedor_telefono
+        (SELECT telefono FROM usuarios WHERE sucursal_id = s.sucursal_id AND rol = 'vendedor' LIMIT 1) as vendedor_telefono,
+        (SELECT correo FROM usuarios WHERE sucursal_id = s.sucursal_id AND rol = 'vendedor' LIMIT 1) as vendedor_correo
       FROM usuarios u
       LEFT JOIN sucursales s ON u.sucursal_id = s.sucursal_id
       LEFT JOIN marcas_autos ma ON u.auto_marca_id = ma.marca_id
