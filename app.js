@@ -969,6 +969,24 @@ app.get('/ventas/:id/seguimiento', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- CLIENTE: Ver solo pedidos activos (Para Seguimiento) ---
+app.get('/ventas/activas', async (req, res) => {
+  const { usuario_id } = req.query;
+  try {
+    const result = await pool.query(`
+      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
+             s.nombre as sucursal_nombre
+      FROM movimientos m
+      JOIN productos p ON m.producto_id = p.producto_id
+      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      WHERE m.usuario_id = $1 
+      AND m.entrega_domicilio = true
+      AND m.estado_entrega IN ('Pendiente', 'En Camino')
+      ORDER BY m.fecha DESC`, [usuario_id]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
