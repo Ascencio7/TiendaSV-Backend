@@ -835,9 +835,14 @@ app.get('/admin/resumen-ventas-detallado', async (req, res) => {
 // --- REPARTIDOR: Ver sus pedidos filtrados por estado (En Camino, Entregado, etc.) ---
 app.get('/repartidor/mis-pedidos', async (req, res) => {
   const { repartidor_id, estado } = req.query; 
-  
+
+  // Validación de seguridad para evitar errores de tipo
+  if (!repartidor_id || repartidor_id === '0' || repartidor_id === 'null') {
+    return res.status(400).json({ error: 'repartidor_id es requerido y debe ser válido' });
+  }
+
   try {
-    const result = await pool.query(`
+    let query = `
       SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre,
              u.nombre as usuario_nombre
       FROM movimientos m
@@ -845,9 +850,23 @@ app.get('/repartidor/mis-pedidos', async (req, res) => {
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
       LEFT JOIN usuarios u ON m.usuario_id = u.usuario_id
       WHERE m.repartidor_id = $1 
-      AND m.estado_entrega = $2
-      ORDER BY m.fecha DESC`, [repartidor_id, estado]);
-      
+    `;
+    
+    let params = [repartidor_id];
+
+    // LÓGICA VITAL: 
+    // Si la App pide "En Camino", le mostramos tanto lo que ya aceptó ('En Camino')
+    // como lo que le asignaron directamente al comprar ('Pendiente')
+    if (estado === 'En Camino') {
+      query += ` AND (m.estado_entrega = 'En Camino' OR m.estado_entrega = 'Pendiente')`;
+    } else {
+      query += ` AND m.estado_entrega = $2`;
+      params.push(estado);
+    }
+
+    query += ` ORDER BY m.fecha DESC`;
+    
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) { 
     console.error("Error en mis-pedidos:", err.message);
