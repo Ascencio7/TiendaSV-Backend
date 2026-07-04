@@ -631,8 +631,8 @@ app.get('/repartidor/pedidos', async (req, res) => {
   const { sucursal_id, repartidor_id } = req.query;
   try {
     const result = await pool.query(`
-      SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre, 
-             u.nombre as usuario_nombre
+      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total, 
+             s.nombre as sucursal_nombre, u.nombre as usuario_nombre
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
@@ -845,8 +845,8 @@ app.get('/repartidor/mis-pedidos', async (req, res) => {
   const { repartidor_id, estado } = req.query; 
   try {
     const result = await pool.query(`
-      SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre,
-             u.nombre as usuario_nombre
+      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
+             s.nombre as sucursal_nombre, u.nombre as usuario_nombre
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
