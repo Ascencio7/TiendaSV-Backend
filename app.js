@@ -390,7 +390,9 @@ app.put('/admin/usuarios/:id', async (req, res) => {
     auto_marca_id, moto_marca_id, marca_otra,
     vehiculo_modelo, vehiculo_color, vehiculo_placa,
     vehiculo_tipo, vehiculo_anio, vehiculo_estado,
-    // Campos de tienda enviados desde Android
+    // Campos de pago añadidos
+    tarjeta_nombre, tarjeta_numero, tarjeta_fecha, tarjeta_cvv,
+    // Campos de tienda
     nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda, latitud, longitud
   } = req.body; 
 
@@ -398,7 +400,7 @@ app.put('/admin/usuarios/:id', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Actualizar tabla usuarios (Perfil, Teléfono y Transporte)
+    // 1. Actualizar tabla usuarios (Incluyendo campos de pago)
     const resUser = await client.query(
       `UPDATE usuarios SET 
         nombre = $1, correo = $2, telefono = $3, password = COALESCE($4, password), 
@@ -406,14 +408,16 @@ app.put('/admin/usuarios/:id', async (req, res) => {
         tipo_transporte = $8, bici_marca = $9, bici_color = $10, bici_caracteristica = $11,
         auto_marca_id = $12, moto_marca_id = $13, marca_otra = $14,
         vehiculo_modelo = $15, vehiculo_color = $16, vehiculo_placa = $17,
-        vehiculo_tipo = $18, vehiculo_anio = $19, vehiculo_estado = $20
-      WHERE usuario_id = $21 RETURNING sucursal_id`,
+        vehiculo_tipo = $18, vehiculo_anio = $19, vehiculo_estado = $20,
+        tarjeta_nombre = $21, tarjeta_numero = $22, tarjeta_fecha = $23, tarjeta_cvv = $24
+      WHERE usuario_id = $25 RETURNING sucursal_id`,
       [
         nombre, correo, telefono, password, foto_perfil, rol, activo,
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
         auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
-        vehiculo_tipo, vehiculo_anio, vehiculo_estado, 
+        vehiculo_tipo, vehiculo_anio, vehiculo_estado,
+        tarjeta_nombre, tarjeta_numero, tarjeta_fecha, tarjeta_cvv,
         id
       ]
     );
