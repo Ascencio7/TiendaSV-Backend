@@ -644,7 +644,7 @@ app.get('/repartidor/pedidos', async (req, res) => {
       ORDER BY m.fecha DESC`, [sucursal_id]);
     res.json(result.rows);
   } catch (err) { 
-    console.error("Error en disponibles:", err.message);
+    console.error("Error en pedidos disponibles:", err.message);
     res.status(500).json({ error: err.message }); 
   }
 });
@@ -839,13 +839,10 @@ app.get('/admin/resumen-ventas-detallado', async (req, res) => {
 
 
 // --- REPARTIDOR: Ver sus pedidos filtrados por estado (En Camino, Entregado, etc.) ---
+
 app.get('/repartidor/mis-pedidos', async (req, res) => {
   const { repartidor_id, estado } = req.query; 
-
-  if (!repartidor_id || repartidor_id === '0' || repartidor_id === 'undefined') {
-    return res.json([]);
-  }
-
+  
   try {
     let query = `
       SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre,
@@ -856,11 +853,10 @@ app.get('/repartidor/mis-pedidos', async (req, res) => {
       LEFT JOIN usuarios u ON m.usuario_id = u.usuario_id
       WHERE m.repartidor_id = $1 
     `;
-    
     let params = [repartidor_id];
 
-    // LÓGICA VITAL: Si es "En Camino", incluimos los 'Pendientes' que ya tienen repartidor
     if (estado === 'En Camino') {
+      // Incluimos 'Pendiente' porque es el estado inicial cuando un cliente te elige directamente
       query += ` AND (m.estado_entrega = 'En Camino' OR m.estado_entrega = 'Pendiente')`;
     } else {
       query += ` AND m.estado_entrega = $2`;
