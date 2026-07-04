@@ -829,6 +829,30 @@ app.get('/admin/resumen-ventas-detallado', async (req, res) => {
 });
 
 
+// --- REPARTIDOR: Ver sus pedidos filtrados por estado (En Camino, Entregado, etc.) ---
+app.get('/repartidor/mis-pedidos', async (req, res) => {
+  const { repartidor_id, estado } = req.query; 
+  // 'estado' puede ser 'En Camino' o 'Entregado'
+  
+  try {
+    const result = await pool.query(`
+      SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre,
+             u.nombre as usuario_nombre, m.direccion_entrega, m.telefono_contacto
+      FROM movimientos m
+      JOIN productos p ON m.producto_id = p.producto_id
+      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      JOIN usuarios u ON m.usuario_id = u.usuario_id
+      WHERE m.repartidor_id = $1 
+      AND m.estado_entrega = $2
+      ORDER BY m.fecha DESC`, [repartidor_id, estado]);
+      
+    res.json(result.rows);
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
+});
+
+
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
 const PORT = process.env.PORT || 3000;
