@@ -635,7 +635,7 @@ app.get('/repartidor/pedidos', async (req, res) => {
              u.nombre as usuario_nombre
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
-      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
       LEFT JOIN usuarios u ON m.usuario_id = u.usuario_id
       WHERE m.entrega_domicilio = true 
       AND m.estado_entrega = 'Pendiente'
@@ -644,7 +644,7 @@ app.get('/repartidor/pedidos', async (req, res) => {
       ORDER BY m.fecha DESC`, [sucursal_id]);
     res.json(result.rows);
   } catch (err) { 
-    console.error("Error en pedidos disponibles:", err.message);
+    console.error("Error en disponibles:", err.message);
     res.status(500).json({ error: err.message }); 
   }
 });
@@ -655,16 +655,22 @@ app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
   try {
     let query = 'UPDATE movimientos SET estado_entrega = $1';
     let params = [estado_entrega];
-    if (repartidor_id) {
+
+    // Si el repartidor acepta un pedido de la lista de 'Disponibles'
+    if (repartidor_id && repartidor_id !== 0) {
       query += ', repartidor_id = $2 WHERE movimiento_id = $3';
       params.push(repartidor_id, id);
     } else {
       query += ' WHERE movimiento_id = $2';
       params.push(id);
     }
+
     await pool.query(query, params);
     res.status(200).json({ mensaje: 'Estado actualizado' });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error("Error actualizando pedido:", err.message);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 // --- GESTIÓN DE REPARTIDORES ---
@@ -836,9 +842,9 @@ app.get('/admin/resumen-ventas-detallado', async (req, res) => {
 app.get('/repartidor/mis-pedidos', async (req, res) => {
   const { repartidor_id, estado } = req.query; 
 
-  // Validación de seguridad para evitar errores de tipo
-  if (!repartidor_id || repartidor_id === '0' || repartidor_id === 'null') {
-    return res.status(400).json({ error: 'repartidor_id es requerido y debe ser válido' });
+  // Si no hay ID de repartidor, devolvemos lista vacía para evitar errores
+  if (!repartidor_id || repartidor_id === '0' || repartidor_id === 'undefined') {
+    return res.json([]);
   }
 
   try {
@@ -847,19 +853,18 @@ app.get('/repartidor/mis-pedidos', async (req, res) => {
              u.nombre as usuario_nombre
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
-      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
       LEFT JOIN usuarios u ON m.usuario_id = u.usuario_id
       WHERE m.repartidor_id = $1 
     `;
     
     let params = [repartidor_id];
 
-    // LÓGICA VITAL: 
-    // Si la App pide "En Camino", le mostramos tanto lo que ya aceptó ('En Camino')
-    // como lo que le asignaron directamente al comprar ('Pendiente')
     if (estado === 'En Camino') {
+      // MOSTRAR: Pedidos asignados directamente ('Pendiente') O los que ya aceptaste ('En Camino')
       query += ` AND (m.estado_entrega = 'En Camino' OR m.estado_entrega = 'Pendiente')`;
     } else {
+      // MOSTRAR: Pedidos con el estado exacto (ej. 'Entregado')
       query += ` AND m.estado_entrega = $2`;
       params.push(estado);
     }
@@ -873,6 +878,7 @@ app.get('/repartidor/mis-pedidos', async (req, res) => {
     res.status(500).json({ error: err.message }); 
   }
 });
+
 
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
