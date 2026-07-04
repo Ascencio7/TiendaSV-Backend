@@ -895,6 +895,80 @@ app.get('/admin/detalle-repartidor/:usuario_id', async (req, res) => {
 });
 
 
+// --- LÓGICA DE CLIENTE: Editar o Solicitar Cancelación ---
+
+// 1. Editar detalles del pedido (Solo si está Pendiente)
+app.put('/ventas/:id/detalles', async (req, res) => {
+  const { id } = req.params;
+  const { direccion_entrega, telefono_contacto } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE movimientos 
+       SET direccion_entrega = $1, telefono_contacto = $2 
+       WHERE movimiento_id = $3 AND estado_entrega = 'Pendiente' 
+       RETURNING *`,
+      [direccion_entrega, telefono_contacto, id]
+    );
+    if (result.rows.length > 0) res.json(result.rows[0]);
+    else res.status(400).json({ error: "No se puede editar, el pedido ya está en camino." });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 2. Solicitar cancelación al repartidor (Si está 'En Camino')
+app.post('/ventas/:id/solicitar-cancelacion', async (req, res) => {
+  const { id } = req.params;
+  const { motivo } = req.body;
+  try {
+    await pool.query(
+      "UPDATE movimientos SET solicitud_cancelacion = true, motivo_cancelacion = $1 WHERE movimiento_id = $2",
+      [motivo, id]
+    );
+    res.json({ mensaje: "Solicitud de cancelación enviada al repartidor." });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 3. Cancelar pedido definitivamente (Devuelve el stock)
+app.post('/ventas/:id/cancelar', async (req, res) => {
+  const { id } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Obtener datos del movimiento para devolver el stock
+    const mov = await client.query("SELECT producto_id, cantidad FROM movimientos WHERE movimiento_id = $1", [id]);
+    if (mov.rows.length > 0) {
+      await client.query("UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", [mov.rows[0].cantidad, mov.rows[0].producto_id]);
+    }
+    
+    // Cambiar estado a Cancelado
+    await client.query("UPDATE movimientos SET estado_entrega = 'Cancelado', solicitud_cancelacion = false WHERE movimiento_id = $1", [id]);
+    
+    await client.query('COMMIT');
+    res.json({ mensaje: "Pedido cancelado y stock restaurado." });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { client.release(); }
+});
+
+// 4. Obtener detalle de seguimiento (Barra de estado)
+app.get('/ventas/:id/seguimiento', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const query = `
+      SELECT m.*, p.nombre as producto_nombre, 
+             u_rep.nombre as repartidor_nombre, u_rep.telefono as repartidor_telefono, u_rep.correo as repartidor_correo,
+             u_rep.foto_perfil as repartidor_foto, u_rep.tipo_transporte
+      FROM movimientos m
+      JOIN productos p ON m.producto_id = p.producto_id
+      LEFT JOIN usuarios u_rep ON m.repartidor_id = u_rep.usuario_id
+      WHERE m.movimiento_id = $1
+    `;
+    const result = await pool.query(query, [id]);
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
