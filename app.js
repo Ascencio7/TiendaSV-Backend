@@ -1022,6 +1022,69 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 });
 
 
+// --- VENTAS MÚLTIPLES (CARRITO DE COMPRAS) ---
+app.post('/ventas/multiple', async (req, res) => {
+  const { 
+    items, 
+    usuario_id, 
+    metodoPago, 
+    entregaDomicilio, 
+    direccionEntrega, 
+    telefonoContacto, 
+    repartidor_id 
+  } = req.body;
+
+  // Validación básica
+  if (!items || !items.length) {
+    return res.status(400).json({ error: "El carrito está vacío" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    for (const item of items) {
+      // 1. Descontar stock de cada producto individualmente
+      const resStock = await client.query(
+        'UPDATE productos SET stock = stock - $1 WHERE producto_id = $2 AND stock >= $1 RETURNING nombre', 
+        [item.cantidad, item.producto_id]
+      );
+
+      if (resStock.rows.length === 0) {
+        throw new Error(`Stock insuficiente para uno de los productos`);
+      }
+      
+      // 2. Registrar el movimiento/pedido para cada producto del carrito
+      await client.query(
+        `INSERT INTO movimientos 
+         (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id) 
+         VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8, $9)`,
+        [
+          item.producto_id, 
+          usuario_id, 
+          item.cantidad, 
+          metodoPago, 
+          entregaDomicilio, 
+          direccionEntrega, 
+          telefonoContacto, 
+          entregaDomicilio ? 'Pendiente' : 'Completado', 
+          repartidor_id || null
+        ]
+      );
+    }
+    
+    await client.query('COMMIT');
+    res.status(201).json({ mensaje: "Compra múltiple procesada correctamente" });
+    
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error("ERROR EN VENTA MÚLTIPLE:", err.message);
+    res.status(500).json({ error: err.message });
+  } finally { 
+    client.release(); 
+  }
+});
+
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
 const PORT = process.env.PORT || 3000;
