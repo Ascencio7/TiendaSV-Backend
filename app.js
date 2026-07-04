@@ -842,7 +842,6 @@ app.get('/admin/resumen-ventas-detallado', async (req, res) => {
 app.get('/repartidor/mis-pedidos', async (req, res) => {
   const { repartidor_id, estado } = req.query; 
 
-  // Si no hay ID de repartidor, devolvemos lista vacía para evitar errores
   if (!repartidor_id || repartidor_id === '0' || repartidor_id === 'undefined') {
     return res.json([]);
   }
@@ -860,21 +859,18 @@ app.get('/repartidor/mis-pedidos', async (req, res) => {
     
     let params = [repartidor_id];
 
+    // LÓGICA VITAL: Si es "En Camino", incluimos los 'Pendientes' que ya tienen repartidor
     if (estado === 'En Camino') {
-      // MOSTRAR: Pedidos asignados directamente ('Pendiente') O los que ya aceptaste ('En Camino')
       query += ` AND (m.estado_entrega = 'En Camino' OR m.estado_entrega = 'Pendiente')`;
     } else {
-      // MOSTRAR: Pedidos con el estado exacto (ej. 'Entregado')
       query += ` AND m.estado_entrega = $2`;
       params.push(estado);
     }
 
     query += ` ORDER BY m.fecha DESC`;
-    
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) { 
-    console.error("Error en mis-pedidos:", err.message);
     res.status(500).json({ error: err.message }); 
   }
 });
