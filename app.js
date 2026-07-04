@@ -724,16 +724,21 @@ app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
 //   } catch (err) { res.status(500).json({ error: err.message }); }
 // });
 
+// --- REPARTIDORES: Obtener lista para el Admin/Vendedor ---
 app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT usuario_id, nombre, correo, activo 
+      `SELECT usuario_id, nombre, correo, activo, tipo_transporte, foto_perfil 
        FROM usuarios 
-       WHERE sucursal_id = $1 AND rol = 'repartidor'`,
+       WHERE sucursal_id = $1 AND rol = 'repartidor'
+       ORDER BY nombre ASC`,
       [req.params.sucursal_id]
     );
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error("Error al obtener repartidores:", err.message);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 
