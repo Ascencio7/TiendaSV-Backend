@@ -628,7 +628,7 @@ app.get('/municipios', async (req, res) => {
 
 // --- REPARTIDOR: Ver sus pedidos ---
 app.get('/repartidor/pedidos', async (req, res) => {
-  const { sucursal_id } = req.query;
+  const { sucursal_id, repartidor_id } = req.query;
   try {
     const result = await pool.query(`
       SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre, 
@@ -639,12 +639,14 @@ app.get('/repartidor/pedidos', async (req, res) => {
       LEFT JOIN usuarios u ON m.usuario_id = u.usuario_id
       WHERE m.entrega_domicilio = true 
       AND m.estado_entrega = 'Pendiente'
-      AND (m.repartidor_id IS NULL OR m.repartidor_id = 0)
+      AND (
+        (m.repartidor_id IS NULL OR m.repartidor_id = 0) 
+        OR m.repartidor_id = $2
+      )
       AND p.sucursal_id = $1
-      ORDER BY m.fecha DESC`, [sucursal_id]);
+      ORDER BY m.fecha DESC`, [sucursal_id, repartidor_id]);
     res.json(result.rows);
   } catch (err) { 
-    console.error("Error en pedidos disponibles:", err.message);
     res.status(500).json({ error: err.message }); 
   }
 });
@@ -839,12 +841,10 @@ app.get('/admin/resumen-ventas-detallado', async (req, res) => {
 
 
 // --- REPARTIDOR: Ver sus pedidos filtrados por estado (En Camino, Entregado, etc.) ---
-
 app.get('/repartidor/mis-pedidos', async (req, res) => {
   const { repartidor_id, estado } = req.query; 
-  
   try {
-    let query = `
+    const result = await pool.query(`
       SELECT m.*, p.nombre as producto_nombre, s.nombre as sucursal_nombre,
              u.nombre as usuario_nombre
       FROM movimientos m
@@ -852,19 +852,8 @@ app.get('/repartidor/mis-pedidos', async (req, res) => {
       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
       LEFT JOIN usuarios u ON m.usuario_id = u.usuario_id
       WHERE m.repartidor_id = $1 
-    `;
-    let params = [repartidor_id];
-
-    if (estado === 'En Camino') {
-      // Incluimos 'Pendiente' porque es el estado inicial cuando un cliente te elige directamente
-      query += ` AND (m.estado_entrega = 'En Camino' OR m.estado_entrega = 'Pendiente')`;
-    } else {
-      query += ` AND m.estado_entrega = $2`;
-      params.push(estado);
-    }
-
-    query += ` ORDER BY m.fecha DESC`;
-    const result = await pool.query(query, params);
+      AND m.estado_entrega = $2
+      ORDER BY m.fecha DESC`, [repartidor_id, estado]);
     res.json(result.rows);
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
