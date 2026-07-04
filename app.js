@@ -923,7 +923,7 @@ app.post('/ventas/:id/solicitar-cancelacion', async (req, res) => {
       "UPDATE movimientos SET solicitud_cancelacion = true, motivo_cancelacion = $1 WHERE movimiento_id = $2",
       [motivo, id]
     );
-    res.json({ mensaje: "Solicitud de cancelación enviada al repartidor." });
+    res.json({ mensaje: "Solicitud enviada al repartidor" });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -933,22 +933,13 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    
-    // Obtener datos del movimiento para devolver el stock
     const mov = await client.query("SELECT producto_id, cantidad FROM movimientos WHERE movimiento_id = $1", [id]);
-    if (mov.rows.length > 0) {
-      await client.query("UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", [mov.rows[0].cantidad, mov.rows[0].producto_id]);
-    }
-    
-    // Cambiar estado a Cancelado
-    await client.query("UPDATE movimientos SET estado_entrega = 'Cancelado', solicitud_cancelacion = false WHERE movimiento_id = $1", [id]);
-    
+    await client.query("UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", [mov.rows[0].cantidad, mov.rows[0].producto_id]);
+    await client.query("UPDATE movimientos SET estado_entrega = 'Cancelado' WHERE movimiento_id = $1", [id]);
     await client.query('COMMIT');
-    res.json({ mensaje: "Pedido cancelado y stock restaurado." });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
-  } finally { client.release(); }
+    res.json({ mensaje: "Pedido cancelado con éxito" });
+  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
+  finally { client.release(); }
 });
 
 // 4. Obtener detalle de seguimiento (Barra de estado)
@@ -956,9 +947,10 @@ app.get('/ventas/:id/seguimiento', async (req, res) => {
   const { id } = req.params;
   try {
     const query = `
-      SELECT m.*, p.nombre as producto_nombre, 
-             u_rep.nombre as repartidor_nombre, u_rep.telefono as repartidor_telefono, u_rep.correo as repartidor_correo,
-             u_rep.foto_perfil as repartidor_foto, u_rep.tipo_transporte
+      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
+             u_rep.nombre as repartidor_nombre, u_rep.telefono as repartidor_telefono, 
+             u_rep.correo as repartidor_correo, u_rep.foto_perfil as repartidor_foto, 
+             u_rep.tipo_transporte
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       LEFT JOIN usuarios u_rep ON m.repartidor_id = u_rep.usuario_id
@@ -972,11 +964,6 @@ app.get('/ventas/:id/seguimiento', async (req, res) => {
 // --- CLIENTE: Ver solo pedidos activos de una tienda específica ---
 app.get('/ventas/activas', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
-  
-  if (!usuario_id) {
-    return res.status(400).json({ error: "usuario_id es requerido" });
-  }
-
   try {
     let query = `
       SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
@@ -988,23 +975,49 @@ app.get('/ventas/activas', async (req, res) => {
       AND m.entrega_domicilio = true
       AND m.estado_entrega IN ('Pendiente', 'En Camino')
     `;
-    
     let params = [usuario_id];
-
-    // LÓGICA VITAL: Filtrar por la tienda donde el usuario está navegando actualmente
-    if (sucursal_id && sucursal_id !== '0' && sucursal_id !== 'null') {
+    if (sucursal_id && sucursal_id !== '0') {
       params.push(sucursal_id);
       query += ` AND p.sucursal_id = $2`;
     }
-
     query += ` ORDER BY m.fecha DESC`;
-    
     const result = await pool.query(query, params);
     res.json(result.rows);
-  } catch (err) { 
-    console.error("Error en ventas/activas:", err.message);
-    res.status(500).json({ error: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/repartidor/:repartidor_id/alertas-cancelacion', async (req, res) => {
+  const { repartidor_id } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT m.*, p.nombre as producto_nombre, u.nombre as usuario_nombre
+      FROM movimientos m
+      JOIN productos p ON m.producto_id = p.producto_id
+      JOIN usuarios u ON m.usuario_id = u.usuario_id
+      WHERE m.repartidor_id = $1 AND m.solicitud_cancelacion = true
+    `, [repartidor_id]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 6. REPARTIDOR: Procesar decisión (Aceptar o Declinar cancelación)
+app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
+  const { id } = req.params;
+  const { accion } = req.body; 
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (accion === 'aceptar') {
+      const mov = await client.query("SELECT producto_id, cantidad FROM movimientos WHERE movimiento_id = $1", [id]);
+      await client.query("UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", [mov.rows[0].cantidad, mov.rows[0].producto_id]);
+      await client.query("UPDATE movimientos SET estado_entrega = 'Cancelado', solicitud_cancelacion = false WHERE movimiento_id = $1", [id]);
+    } else {
+      await client.query("UPDATE movimientos SET solicitud_cancelacion = false WHERE movimiento_id = $1", [id]);
+    }
+    await client.query('COMMIT');
+    res.json({ mensaje: "Procesado correctamente" });
+  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
+  finally { client.release(); }
 });
 
 
