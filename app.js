@@ -802,27 +802,30 @@ app.get('/marcas/motos', async (req, res) => {
   }
 });
 
-// --- NUEVO MÉTODO: Resumen Detallado para Admin ---
+// --- MÉTODO ACTUALIZADO: Resumen por Tienda ---
 app.get('/admin/resumen-ventas-detallado', async (req, res) => {
+  const { sucursal_id } = req.query; // Capturamos el filtro
   try {
-    const query = `
-      SELECT 
-        m.*, 
-        p.nombre as producto_nombre, 
-        (m.cantidad * p.precio) as total,
-        u.nombre as usuario_nombre,
-        s.nombre as sucursal_nombre
+    let query = `
+      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
+             u.nombre as usuario_nombre, s.nombre as sucursal_nombre
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       JOIN usuarios u ON m.usuario_id = u.usuario_id
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
       WHERE m.tipo = 'salida'
-      ORDER BY m.fecha DESC
     `;
-    const result = await pool.query(query);
+    
+    let params = [];
+    if (sucursal_id && sucursal_id !== '0') {
+      query += ` AND p.sucursal_id = $1`;
+      params.push(sucursal_id);
+    }
+    
+    query += ` ORDER BY m.fecha DESC`;
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
-    console.error("ERROR RESUMEN:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
