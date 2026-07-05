@@ -203,7 +203,7 @@ app.post('/ventas', async (req, res) => {
   } finally { client.release(); }
 });
 
-// --- HISTORIAL DE VENTAS Y ESTADÍSTICAS (CORREGIDO) ---
+// --- HISTORIAL AGRUPADO Y FILTRADO ---
 app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
@@ -212,7 +212,8 @@ app.get('/ventas/historial', async (req, res) => {
         m.compra_id as movimiento_id_str,
         MAX(m.movimiento_id) as movimiento_id,
         STRING_AGG(p.nombre || ' (x' || m.cantidad || ')', ', ') as producto_nombre,
-        SUM(m.cantidad * p.precio) as total,
+        SUM(m.cantidad) as cantidad, -- Suma total de unidades del pedido
+        SUM(m.cantidad * p.precio) as total, -- Suma total de dinero
         MAX(m.fecha) as fecha,
         MAX(s.nombre) as sucursal_nombre,
         MAX(m.estado_entrega) as estado_entrega
@@ -222,12 +223,15 @@ app.get('/ventas/historial', async (req, res) => {
       WHERE m.tipo = 'salida' 
       AND (m.usuario_id = $1 OR $1 IS NULL)
       AND (p.sucursal_id = $2 OR $2 IS NULL)
+      -- LÓGICA VITAL: Solo mostrar si ya se entregó o si fue venta física (no domicilio)
       AND (m.entrega_domicilio = false OR m.estado_entrega = 'Entregado')
       GROUP BY m.compra_id, m.fecha
       ORDER BY fecha DESC
     `, [usuario_id || null, sucursal_id || null]);
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 app.get('/admin/comentarios', async (req, res) => {
@@ -1014,30 +1018,41 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 });
 
 
-// --- VENTAS MÚLTIPLES (CARRITO DE COMPRAS) ---
+// --- REGISTRO DE VENTA MÚLTIPLE (CARRITO) ---
 app.post('/ventas/multiple', async (req, res) => {
   const { items, usuario_id, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, repartidor_id } = req.body;
   const client = await pool.connect();
-  const compra_id = `TRX-${Date.now()}`; // Identificador único para agrupar
+  const compra_id = `TRX-${Date.now()}`; // Identificador único para agrupar el pedido
 
   try {
     await client.query('BEGIN');
+    
     for (const item of items) {
+      // 1. Descontar stock
       await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [item.cantidad, item.producto_id]);
+      
+      // 2. Insertar movimiento con el compra_id
       await client.query(
         `INSERT INTO movimientos 
          (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id) 
          VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8, $9, $10)`,
-        [item.producto_id, usuario_id, item.cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
-         entregaDomicilio ? 'Pendiente' : 'Completado', repartidor_id || null, compra_id]
+        [
+          item.producto_id, usuario_id, item.cantidad, metodoPago, 
+          entregaDomicilio, direccionEntrega, telefonoContacto, 
+          entregaDomicilio ? 'Pendiente' : 'Completado', 
+          repartidor_id || null, compra_id
+        ]
       );
     }
+    
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: "Compra exitosa", compra_id });
+    res.status(201).json({ mensaje: "Compra múltiple realizada con éxito", compra_id });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
-  } finally { client.release(); }
+  } finally { 
+    client.release(); 
+  }
 });
 
 
