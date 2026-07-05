@@ -114,14 +114,15 @@ app.get('/productos', async (req, res) => {
 
 // Al crear producto, guardamos quién es el dueño (usuario_id)
 app.post('/productos', async (req, res) => {
-const { codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id } = req.body;  
-try {
+  const { codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id } = req.body;  
+  try {
     const result = await pool.query(
-      'INSERT INTO productos (codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)'
+      'INSERT INTO productos (codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', // <-- ASEGÚRATE DE QUE ESTA COMA ESTÉ AQUÍ
       [codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
+    console.error(err); // Es bueno agregar esto para ver el error en la consola de Node
     res.status(500).json({ error: err.message });
   }
 });
