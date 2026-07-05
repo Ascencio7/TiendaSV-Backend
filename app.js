@@ -216,6 +216,7 @@ app.get('/ventas/historial', async (req, res) => {
         STRING_AGG(p.nombre || ' (x' || m.cantidad || ')', ', ') as producto_nombre,
         SUM(m.cantidad) as cantidad, -- Suma total de unidades del pedido
         SUM(m.cantidad * p.precio) as total, -- Suma total de dinero
+        SUM(m.cantidad * (p.precio - COALESCE(p.costo, 0))) as ganancia_neta,
         MAX(m.fecha) as fecha,
         MAX(s.nombre) as sucursal_nombre,
         MAX(m.estado_entrega) as estado_entrega
@@ -698,10 +699,11 @@ app.post('/repartidor/solicitar', async (req, res) => {
 app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.solicitud_id, s.repartidor_id, s.sucursal_id, s.estado, 
-              u.nombre as repartidor_nombre, u.correo as repartidor_correo,
-              u.foto_perfil as repartidor_foto, u.tipo_transporte
-       FROM solicitudes_repartidor s
+        `SELECT s.solicitud_id, s.repartidor_id, s.sucursal_id, s.estado, 
+                u.nombre as repartidor_nombre, u.correo as repartidor_correo,
+                u.telefono as repartidor_telefono,
+                u.foto_perfil as repartidor_foto, u.tipo_transporte
+        FROM solicitudes_repartidor s
        JOIN usuarios u ON s.repartidor_id = u.usuario_id
        WHERE s.sucursal_id = $1 AND s.estado = 'pendiente'`,
       [req.params.sucursal_id]
@@ -715,9 +717,9 @@ app.get('/vendedor/solicitudes/:sucursal_id', async (req, res) => {
 app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT usuario_id, nombre, correo, activo, tipo_transporte, foto_perfil 
-       FROM usuarios 
-       WHERE sucursal_id = $1 AND rol = 'repartidor'
+    `SELECT usuario_id, nombre, correo, telefono, activo, tipo_transporte, foto_perfil 
+    FROM usuarios 
+    WHERE sucursal_id = $1 AND rol = 'repartidor'
        ORDER BY nombre ASC`,
       [req.params.sucursal_id]
     );
