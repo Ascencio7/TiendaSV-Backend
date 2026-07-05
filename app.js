@@ -128,11 +128,11 @@ try {
 
 app.put('/productos/:id', async (req, res) => {
   const { id } = req.params;
-  const { codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo, sucursal_id } = req.body;
+  const { codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE productos SET codigo_barras = $1, nombre = $2, categoria_id = $3, precio = $4, stock = $5, imagen_url = $6, activo = $7, sucursal_id = $8 WHERE producto_id = $9 RETURNING *',
-      [codigo_barras, nombre, categoria_id, precio, stock, imagen_url, activo, sucursal_id, id]
+      'UPDATE productos SET codigo_barras = $1, nombre = $2, categoria_id = $3, precio = $4, costo = $5, stock = $6, imagen_url = $7, activo = $8, sucursal_id = $9 WHERE producto_id = $10',
+      [codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, id]
     );
     res.json(result.rows[0]);
   } catch (err) {
