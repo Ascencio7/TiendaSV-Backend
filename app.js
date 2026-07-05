@@ -117,12 +117,12 @@ app.post('/productos', async (req, res) => {
   const { codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id } = req.body;  
   try {
     const result = await pool.query(
-      'INSERT INTO productos (codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', // <-- ASEGÚRATE DE QUE ESTA COMA ESTÉ AQUÍ
+      'INSERT INTO productos (codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *', 
       [codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error(err); // Es bueno agregar esto para ver el error en la consola de Node
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -132,7 +132,7 @@ app.put('/productos/:id', async (req, res) => {
   const { codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE productos SET codigo_barras = $1, nombre = $2, categoria_id = $3, precio = $4, costo = $5, stock = $6, imagen_url = $7, activo = $8, sucursal_id = $9 WHERE producto_id = $10',
+      'UPDATE productos SET codigo_barras = $1, nombre = $2, categoria_id = $3, precio = $4, costo = $5, stock = $6, imagen_url = $7, activo = $8, sucursal_id = $9 WHERE producto_id = $10 RETURNING *',
       [codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, id]
     );
     res.json(result.rows[0]);
@@ -140,6 +140,7 @@ app.put('/productos/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.delete('/productos/:id', async (req, res) => {
   const { id } = req.params;
