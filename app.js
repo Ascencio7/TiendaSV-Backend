@@ -319,15 +319,21 @@ app.get('/admin/reporte-inventario', async (req, res) => {
 app.get('/admin/reporte-ventas', async (req, res) => {
   const { sucursal_id } = req.query;
   try {
-    let query = `
-      SELECT m.fecha, p.nombre as producto, m.cantidad, (m.cantidad * p.precio) as total, 
-             s.nombre as tienda, u.nombre as vendedor
-      FROM movimientos m
-      JOIN productos p ON m.producto_id = p.producto_id
-      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      JOIN usuarios u ON p.usuario_id = u.usuario_id
-      WHERE m.tipo = 'salida'
-    `;
+      let query = `
+        SELECT 
+          m.fecha, 
+          p.nombre as producto, 
+          m.cantidad, 
+          (m.cantidad * p.precio) as total,
+          (m.cantidad * (p.precio - COALESCE(p.costo, 0))) as ganancia_neta,
+          s.nombre as tienda, 
+          u.nombre as vendedor
+        FROM movimientos m
+        JOIN productos p ON m.producto_id = p.producto_id
+        JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+        JOIN usuarios u ON p.usuario_id = u.usuario_id
+        WHERE m.tipo = 'salida'
+      `;
     let params = [];
     if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0') {
       params.push(sucursal_id);
