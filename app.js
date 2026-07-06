@@ -213,9 +213,10 @@ app.get('/ventas/historial', async (req, res) => {
       SELECT 
         m.compra_id as movimiento_id_str,
         MAX(m.movimiento_id) as movimiento_id,
+        MAX(p.sucursal_id) as sucursal_id,
         STRING_AGG(p.nombre || ' (x' || m.cantidad || ')', ', ') as producto_nombre,
-        SUM(m.cantidad) as cantidad, -- Suma total de unidades del pedido
-        SUM(m.cantidad * p.precio) as total, -- Suma total de dinero
+        SUM(m.cantidad) as cantidad,
+        SUM(m.cantidad * p.precio) as total,
         SUM(m.cantidad * (p.precio - COALESCE(p.costo, 0))) as ganancia_neta,
         MAX(m.fecha) as fecha,
         MAX(s.nombre) as sucursal_nombre,
