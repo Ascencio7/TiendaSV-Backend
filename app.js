@@ -686,9 +686,18 @@ app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
 
 // Enviar solicitud de unión
 app.post('/repartidor/solicitar', async (req, res) => {
-  const { repartidor_id, sucursal_id } = req.body;
+  const { repartidor_id, sucursal_id, accion } = req.body;
   try {
-    // Si ya existe la combinación repartidor/tienda, actualiza el estado a pendiente
+    if (accion === 'cancelar') {
+      // Borra la solicitud si el repartidor decide cancelarla
+      await pool.query(
+        'DELETE FROM solicitudes_repartidor WHERE repartidor_id = $1 AND sucursal_id = $2',
+        [repartidor_id, sucursal_id]
+      );
+      return res.status(200).json({ mensaje: 'Solicitud cancelada' });
+    }
+
+    // Lógica normal de inserción
     await pool.query(
       `INSERT INTO solicitudes_repartidor (repartidor_id, sucursal_id, estado) 
        VALUES ($1, $2, 'pendiente')
