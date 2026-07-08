@@ -1076,6 +1076,62 @@ app.post('/ventas/multiple', async (req, res) => {
 });
 
 
+// --- GESTIÓN DEL CARRITO (PERSISTENCIA) ---
+
+// 1. Obtener el carrito guardado del usuario para una tienda específica
+app.get('/carrito', async (req, res) => {
+  const { usuario_id, sucursal_id } = req.query;
+  try {
+    const result = await pool.query(`
+      SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre
+      FROM carrito_items ci
+      JOIN productos p ON ci.producto_id = p.producto_id
+      LEFT JOIN categorias c ON p.categoria_id = c.categoria_id
+      LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      WHERE ci.usuario_id = $1 AND ci.sucursal_id = $2
+    `, [usuario_id, sucursal_id]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Sincronizar el carrito (Guardar el estado actual de la app en la DB)
+app.post('/carrito/sync', async (req, res) => {
+  const { usuario_id, sucursal_id, items } = req.body; 
+  // 'items' debe ser un array de objetos con {producto_id}
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Primero limpiamos el carrito viejo de ese usuario en esa tienda
+    await client.query(
+      'DELETE FROM carrito_items WHERE usuario_id = $1 AND sucursal_id = $2',
+      [usuario_id, sucursal_id]
+    );
+    
+    // Insertamos los productos actuales
+    if (items && items.length > 0) {
+      for (const item of items) {
+        await client.query(
+          'INSERT INTO carrito_items (usuario_id, sucursal_id, producto_id, cantidad) VALUES ($1, $2, $3, $4)',
+          [usuario_id, sucursal_id, item.producto_id, 1]
+        );
+      }
+    }
+    
+    await client.query('COMMIT');
+    res.status(200).json({ mensaje: "Carrito sincronizado en la nube" });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
 const PORT = process.env.PORT || 3000;
