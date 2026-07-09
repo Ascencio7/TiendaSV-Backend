@@ -32,7 +32,7 @@ app.post('/login', async (req, res) => {
   const { correo, password } = req.body;
   try {
     const result = await pool.query(
-      'SELECT usuario_id, nombre, correo, rol, sucursal_id FROM usuarios WHERE correo = $1 AND password = $2',
+      'SELECT usuario_id, nombre, correo, rol, sucursal_id FROM usuarios WHERE correo = $1 AND password = crypt($2, password)',
       [correo, password]
     );
 
@@ -62,16 +62,13 @@ app.post('/admin/crear-admin', async (req, res) => {
   if (!correo.toLowerCase().endsWith('@tiendasv.com')) {
     return res.status(400).json({ error: 'El correo debe ser @tiendasv.com' });
   }
-
   try {
     await pool.query(
-      'INSERT INTO usuarios (nombre, correo, password, rol) VALUES ($1, $2, $3, $4)',
+      "INSERT INTO usuarios (nombre, correo, password, rol) VALUES ($1, $2, crypt($3, gen_salt('bf', 10)), $4)",
       [nombre, correo, password, 'admin']
     );
     res.status(201).json({ mensaje: 'Administrador creado correctamente' });
-  } catch (err) {
-    res.status(400).json({ error: 'Error al crear admin' });
-  }
+  } catch (err) { /* ... */ }
 });
 
 // --- ENDPOINTS PARA PRODUCTOS (CRUD) ---
@@ -279,10 +276,15 @@ app.put('/usuarios/reset-password', async (req, res) => {
   }
 
   try {
-    // Actualizamos la contraseña solo si el correo existe
-    const result = await pool.query(
-      'UPDATE usuarios SET password = $1 WHERE correo = $2 RETURNING usuario_id',
-      [nuevaPassword, correo]
+    await client.query('BEGIN');
+    const resUser = await client.query(
+      `UPDATE usuarios SET 
+        nombre = $1, correo = $2, telefono = $3, 
+        password = COALESCE(crypt($4, gen_salt('bf', 10)), password), 
+        foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
+        -- ... otros campos
+      WHERE usuario_id = $25 RETURNING sucursal_id`,
+      [ nuevaPassword, correo]
     );
 
     if (result.rows.length > 0) {
@@ -410,7 +412,8 @@ app.put('/admin/usuarios/:id', async (req, res) => {
     // 1. Actualizar tabla usuarios (Incluyendo campos de pago)
     const resUser = await client.query(
       `UPDATE usuarios SET 
-        nombre = $1, correo = $2, telefono = $3, password = COALESCE($4, password), 
+        nombre = $1, correo = $2, telefono = $3,
+        password = COALESCE(crypt($4, gen_salt('bf', 10)), password),
         foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
         tipo_transporte = $8, bici_marca = $9, bici_color = $10, bici_caracteristica = $11,
         auto_marca_id = $12, moto_marca_id = $13, marca_otra = $14,
@@ -492,43 +495,6 @@ app.put('/admin/sucursales/:id', async (req, res) => {
   }
 });
 
-// --- REGISTRO DE USUARIO (Descomentado y corregido) ---
-// app.post('/usuarios', async (req, res) => {
-//   const { nombre, correo, password, rol, nombreTienda, direccionTienda, departamentoTienda, municipioTienda } = req.body;
-  
-//   if (correo.toLowerCase().endsWith('@tiendasv.com')) {
-//     return res.status(403).json({ error: 'Dominio reservado para administradores.' });
-//   }
-
-// const client = await pool.connect();
-//   try {
-//     await client.query('BEGIN');
-//     let sucursalId = null;
-
-//     if (rol === 'vendedor') {
-//       const resTienda = await client.query(
-//         'INSERT INTO sucursales (nombre, direccion, departamento, municipio, latitud, longitud, activo) VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING sucursal_id',
-//         [nombreTienda, direccionTienda, departamentoTienda, municipioTienda, latitud, longitud]
-//       );
-//       sucursalId = resTienda.rows[0].sucursal_id;
-//     }
-
-//     await client.query(
-//       'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id, activo) VALUES ($1, $2, $3, $4, $5, true)',
-//       [nombre, correo, password, rol || 'cliente', sucursalId]
-//     );
-
-//     await client.query('COMMIT');
-//     res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
-//   } catch (err) {
-//     await client.query('ROLLBACK');
-//     res.status(400).json({ error: err.message });
-//   } finally {
-//     client.release();
-//   }
-// });
-
-
 // --- REGISTRO DE USUARIO CORREGIDO ---
 app.post('/usuarios', async (req, res) => {
   const { 
@@ -560,14 +526,14 @@ app.post('/usuarios', async (req, res) => {
 
     await client.query(
       `INSERT INTO usuarios (
-        nombre, correo, telefono, password, rol, sucursal_id, activo, // <--- 2. AGREGAR AQUÍ
+        nombre, correo, telefono, password, rol, sucursal_id, activo,
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
         auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
         vehiculo_tipo, vehiculo_anio, vehiculo_estado
-      ) VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`, // <--- 3. AJUSTAR $
+      ) VALUES ($1, $2, $3, crypt($4, gen_salt('bf', 10)), $5, $6, true, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
       [
-        nombre, correo, telefono, password, rol || 'cliente', sucursalId, // <--- 4. AGREGAR AQUÍ
+        nombre, correo, telefono, password, rol || 'cliente', sucursalId,
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
         auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
@@ -584,10 +550,6 @@ app.post('/usuarios', async (req, res) => {
     client.release();
   }
 });
-
-
-
-
 
 // Sugerencia para archivo app.js
 app.post('/comentarios', async (req, res) => {
