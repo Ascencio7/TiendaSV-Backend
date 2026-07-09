@@ -62,13 +62,16 @@ app.post('/admin/crear-admin', async (req, res) => {
   if (!correo.toLowerCase().endsWith('@tiendasv.com')) {
     return res.status(400).json({ error: 'El correo debe ser @tiendasv.com' });
   }
+
   try {
     await pool.query(
       "INSERT INTO usuarios (nombre, correo, password, rol) VALUES ($1, $2, crypt($3, gen_salt('bf', 10)), $4)",
       [nombre, correo, password, 'admin']
     );
     res.status(201).json({ mensaje: 'Administrador creado correctamente' });
-  } catch (err) { /* ... */ }
+  } catch (err) {
+    res.status(400).json({ error: 'Error al crear admin' });
+  }
 });
 
 // --- ENDPOINTS PARA PRODUCTOS (CRUD) ---
@@ -276,15 +279,10 @@ app.put('/usuarios/reset-password', async (req, res) => {
   }
 
   try {
-    await client.query('BEGIN');
-    const resUser = await client.query(
-      `UPDATE usuarios SET 
-        nombre = $1, correo = $2, telefono = $3, 
-        password = COALESCE(crypt($4, gen_salt('bf', 10)), password), 
-        foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
-        -- ... otros campos
-      WHERE usuario_id = $25 RETURNING sucursal_id`,
-      [ nuevaPassword, correo]
+    // Actualizamos la contraseña solo si el correo existe
+    const result = await pool.query(
+      "UPDATE usuarios SET password = crypt($1, gen_salt('bf', 10)) WHERE correo = $2 RETURNING usuario_id",
+      [nuevaPassword, correo]
     );
 
     if (result.rows.length > 0) {
@@ -495,6 +493,43 @@ app.put('/admin/sucursales/:id', async (req, res) => {
   }
 });
 
+// --- REGISTRO DE USUARIO (Descomentado y corregido) ---
+// app.post('/usuarios', async (req, res) => {
+//   const { nombre, correo, password, rol, nombreTienda, direccionTienda, departamentoTienda, municipioTienda } = req.body;
+  
+//   if (correo.toLowerCase().endsWith('@tiendasv.com')) {
+//     return res.status(403).json({ error: 'Dominio reservado para administradores.' });
+//   }
+
+// const client = await pool.connect();
+//   try {
+//     await client.query('BEGIN');
+//     let sucursalId = null;
+
+//     if (rol === 'vendedor') {
+//       const resTienda = await client.query(
+//         'INSERT INTO sucursales (nombre, direccion, departamento, municipio, latitud, longitud, activo) VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING sucursal_id',
+//         [nombreTienda, direccionTienda, departamentoTienda, municipioTienda, latitud, longitud]
+//       );
+//       sucursalId = resTienda.rows[0].sucursal_id;
+//     }
+
+//     await client.query(
+//       'INSERT INTO usuarios (nombre, correo, password, rol, sucursal_id, activo) VALUES ($1, $2, $3, $4, $5, true)',
+//       [nombre, correo, password, rol || 'cliente', sucursalId]
+//     );
+
+//     await client.query('COMMIT');
+//     res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
+//   } catch (err) {
+//     await client.query('ROLLBACK');
+//     res.status(400).json({ error: err.message });
+//   } finally {
+//     client.release();
+//   }
+// });
+
+
 // --- REGISTRO DE USUARIO CORREGIDO ---
 app.post('/usuarios', async (req, res) => {
   const { 
@@ -550,6 +585,10 @@ app.post('/usuarios', async (req, res) => {
     client.release();
   }
 });
+
+
+
+
 
 // Sugerencia para archivo app.js
 app.post('/comentarios', async (req, res) => {
@@ -1038,14 +1077,14 @@ app.post('/ventas/multiple', async (req, res) => {
 });
 
 
-// --- GESTIÓN DEL CARRITO (PERSISTENCIA) ---
+// --- GESTIÓN DEL CARRITO (PERSISTENCIA MEJORADA) ---
 
-// 1. Obtener el carrito guardado del usuario para una tienda específica
+// 1. Obtener el carrito guardado (Ahora incluye la cantidad guardada)
 app.get('/carrito', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
     const result = await pool.query(`
-      SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre
+      SELECT p.*, ci.cantidad as cantidad_carrito, c.nombre as categoria, s.nombre as sucursal_nombre
       FROM carrito_items ci
       JOIN productos p ON ci.producto_id = p.producto_id
       LEFT JOIN categorias c ON p.categoria_id = c.categoria_id
@@ -1058,38 +1097,60 @@ app.get('/carrito', async (req, res) => {
   }
 });
 
-// 2. Sincronizar el carrito (Guardar el estado actual de la app en la DB)
+// 2. Sincronizar el carrito completo
 app.post('/carrito/sync', async (req, res) => {
   const { usuario_id, sucursal_id, items } = req.body; 
-  // 'items' debe ser un array de objetos con {producto_id}
-  
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    
-    // Primero limpiamos el carrito viejo de ese usuario en esa tienda
     await client.query(
       'DELETE FROM carrito_items WHERE usuario_id = $1 AND sucursal_id = $2',
       [usuario_id, sucursal_id]
     );
-    
-    // Insertamos los productos actuales
     if (items && items.length > 0) {
       for (const item of items) {
         await client.query(
           'INSERT INTO carrito_items (usuario_id, sucursal_id, producto_id, cantidad) VALUES ($1, $2, $3, $4)',
-          [usuario_id, sucursal_id, item.producto_id, 1]
+          [usuario_id, sucursal_id, item.producto_id, item.cantidad || 1]
         );
       }
     }
-    
     await client.query('COMMIT');
     res.status(200).json({ mensaje: "Carrito sincronizado en la nube" });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
+  } finally { client.release(); }
+});
+
+// 3. NUEVO: Agregar o actualizar un solo item (Ideal para persistencia inmediata)
+app.post('/carrito', async (req, res) => {
+  const { usuario_id, sucursal_id, producto_id, cantidad } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO carrito_items (usuario_id, sucursal_id, producto_id, cantidad) 
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (usuario_id, sucursal_id, producto_id) 
+       DO UPDATE SET cantidad = EXCLUDED.cantidad, fecha_agregado = NOW()`,
+      [usuario_id, sucursal_id, producto_id, cantidad || 1]
+    );
+    res.status(201).json({ mensaje: 'Producto actualizado en el carrito' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. NUEVO: Eliminar un item específico del carrito
+app.delete('/carrito', async (req, res) => {
+  const { usuario_id, sucursal_id, producto_id } = req.query;
+  try {
+    await pool.query(
+      'DELETE FROM carrito_items WHERE usuario_id = $1 AND sucursal_id = $2 AND producto_id = $3',
+      [usuario_id, sucursal_id, producto_id]
+    );
+    res.status(200).json({ mensaje: 'Producto eliminado del carrito' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
