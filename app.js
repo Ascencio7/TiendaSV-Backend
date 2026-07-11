@@ -801,6 +801,58 @@ app.get('/admin/detalle-repartidor/:usuario_id', async (req, res) => {
 });
 
 
+// Obtener resumen de tiendas por ubicación (Departamento/Municipio) y porcentajes
+app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
+  const { departamento_id } = req.query;
+  try {
+    // Total general de sucursales activas
+    const totalRes = await pool.query('SELECT COUNT(*) FROM sucursales WHERE activo = true');
+    const totalGeneral = parseInt(totalRes.rows[0].count);
+
+    // Conteo y % por departamento
+    const deptoRes = await pool.query(`
+      SELECT departamento as nombre, COUNT(*) as cantidad, 
+             ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
+      FROM sucursales
+      WHERE activo = true
+      GROUP BY departamento
+      ORDER BY cantidad DESC
+    `, [totalGeneral]);
+
+    // Conteo y % por municipio (filtrado opcionalmente por departamento)
+    let munQuery = `
+      SELECT municipio as nombre, COUNT(*) as cantidad,
+             ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
+      FROM sucursales
+      WHERE activo = true
+    `;
+    let params = [totalGeneral];
+    
+    if (departamento_id && departamento_id !== '0') {
+       // Buscar nombre del departamento para filtrar en la tabla sucursales
+       const dName = await pool.query('SELECT depar FROM departamentos WHERE id = $1', [departamento_id]);
+       if (dName.rows.length > 0) {
+         munQuery += ` AND departamento = $2`;
+         params.push(dName.rows[0].depar);
+       }
+    }
+    
+    munQuery += ` GROUP BY municipio ORDER BY cantidad DESC`;
+    const munRes = await pool.query(munQuery, params);
+
+    res.json({
+      total: totalGeneral,
+      por_departamento: deptoRes.rows,
+      por_municipio: munRes.rows
+    });
+  } catch (err) {
+    console.error("Error en stats sucursales:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
 
 // PRODUCTOS
 
