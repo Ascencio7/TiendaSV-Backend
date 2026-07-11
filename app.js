@@ -805,50 +805,51 @@ app.get('/admin/detalle-repartidor/:usuario_id', async (req, res) => {
 app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
   const { departamento_id } = req.query;
   try {
-    // Total general de sucursales activas
-    const totalRes = await pool.query('SELECT COUNT(*) FROM sucursales WHERE activo = true');
-    const totalGeneral = parseInt(totalRes.rows[0].count);
+    const totalGlobalRes = await pool.query('SELECT COUNT(*) FROM sucursales WHERE activo = true');
+    const totalGeneral = parseInt(totalGlobalRes.rows[0].count);
 
-    // Conteo y % por departamento
+    // Estadísticas por Departamento (Siempre respecto al total nacional)
     const deptoRes = await pool.query(`
-      SELECT departamento as nombre, COUNT(*) as cantidad, 
+      SELECT UPPER(departamento) as nombre, COUNT(*) as cantidad, 
              ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
-      FROM sucursales
-      WHERE activo = true
-      GROUP BY departamento
-      ORDER BY cantidad DESC
+      FROM sucursales WHERE activo = true
+      GROUP BY departamento ORDER BY cantidad DESC
     `, [totalGeneral]);
 
-    // Conteo y % por municipio (filtrado opcionalmente por departamento)
-    let munQuery = `
-      SELECT municipio as nombre, COUNT(*) as cantidad,
-             ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
-      FROM sucursales
-      WHERE activo = true
-    `;
-    let params = [totalGeneral];
-    
+    let munResults = [];
     if (departamento_id && departamento_id !== '0') {
-       // Buscar nombre del departamento para filtrar en la tabla sucursales
-       const dName = await pool.query('SELECT depar FROM departamentos WHERE id = $1', [departamento_id]);
-       if (dName.rows.length > 0) {
-         munQuery += ` AND departamento = $2`;
-         params.push(dName.rows[0].depar);
+       // Si hay Depto, el % de cada municipio es respecto al TOTAL DEL DEPTO
+       const dInfo = await pool.query('SELECT depar FROM departamentos WHERE id = $1', [departamento_id]);
+       if (dInfo.rows.length > 0) {
+         const deptoNombre = dInfo.rows[0].depar;
+         const totalDeptoRes = await pool.query('SELECT COUNT(*) FROM sucursales WHERE activo = true AND departamento = $1', [deptoNombre]);
+         const totalDepto = parseInt(totalDeptoRes.rows[0].count);
+
+         const munRes = await pool.query(`
+           SELECT UPPER(municipio) as nombre, COUNT(*) as cantidad,
+                  ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
+           FROM sucursales WHERE activo = true AND departamento = $2
+           GROUP BY municipio ORDER BY cantidad DESC
+         `, [totalDepto, deptoNombre]);
+         munResults = munRes.rows;
        }
+    } else {
+       // Si es Nacional, el % de cada municipio es respecto al total nacional
+       const munRes = await pool.query(`
+         SELECT UPPER(municipio) as nombre, COUNT(*) as cantidad,
+                ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
+         FROM sucursales WHERE activo = true
+         GROUP BY municipio ORDER BY cantidad DESC
+       `, [totalGeneral]);
+       munResults = munRes.rows;
     }
-    
-    munQuery += ` GROUP BY municipio ORDER BY cantidad DESC`;
-    const munRes = await pool.query(munQuery, params);
 
     res.json({
       total: totalGeneral,
       por_departamento: deptoRes.rows,
-      por_municipio: munRes.rows
+      por_municipio: munResults
     });
-  } catch (err) {
-    console.error("Error en stats sucursales:", err.message);
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 
