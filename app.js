@@ -861,7 +861,7 @@ app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
 });
 
 
-// --- CENSO NACIONAL DETALLADO DE TIENDAS ---
+// --- CENSO NACIONAL DETALLADO DE TIENDAS PARA EL GOBIERNO ---
 app.get('/admin/censo-nacional', async (req, res) => {
   try {
     const query = `
@@ -873,6 +873,7 @@ app.get('/admin/censo-nacional', async (req, res) => {
         s.direccion,
         COALESCE(u.nombre, 'SIN ASIGNAR') as responsable,
         COALESCE(u.telefono, 'N/A') as telefono,
+        COALESCE(u.correo, 'N/A') as correo,
         s.activo
       FROM sucursales s
       LEFT JOIN usuarios u ON s.sucursal_id = u.sucursal_id AND u.rol = 'vendedor'
@@ -881,7 +882,8 @@ app.get('/admin/censo-nacional', async (req, res) => {
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("ERROR EN CENSO:", err.message);
+    res.status(500).json({ error: "Error al generar el censo nacional" });
   }
 });
 
