@@ -802,58 +802,60 @@ app.get('/admin/detalle-repartidor/:usuario_id', async (req, res) => {
 
 
 // Obtener resumen de tiendas por ubicación (Departamento/Municipio) y porcentajes
-// --- ESTADÍSTICAS DE TIENDAS PARA ADMINISTRADOR (FINAL) ---
+// --- ESTADÍSTICAS DE TIENDAS PARA ADMINISTRADOR (LÓGICA SCOPED) ---
 app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
   const { departamento_id } = req.query;
   try {
-    const totalGlobalRes = await pool.query('SELECT COUNT(*) FROM sucursales WHERE activo = true');
-    const totalGeneral = parseInt(totalGlobalRes.rows[0].count) || 0;
+    // 1. Obtener conteos base (Globales por defecto)
+    let totalTiendasQuery = 'SELECT COUNT(*) FROM sucursales WHERE activo = true';
+    let deptoCountQuery = 'SELECT COUNT(DISTINCT UPPER(TRIM(departamento))) FROM sucursales WHERE activo = true';
+    let munCountQuery = 'SELECT COUNT(DISTINCT UPPER(TRIM(municipio))) FROM sucursales WHERE activo = true';
+    let params = [];
 
-    // Estadísticas por Departamento (Vista Nacional)
-    const deptoRes = await pool.query(`
-      SELECT UPPER(TRIM(departamento)) as nombre, COUNT(*) as cantidad, 
-             ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
-      FROM sucursales WHERE activo = true
-      GROUP BY UPPER(TRIM(departamento)) ORDER BY cantidad DESC
-    `, [totalGeneral]);
-
-    let munResults = [];
+    // 2. Si hay departamento, scopeamos los conteos a ese departamento
     if (departamento_id && departamento_id !== '0') {
-       const dInfo = await pool.query('SELECT depar FROM departamentos WHERE id = $1', [departamento_id]);
-       if (dInfo.rows.length > 0) {
-         const deptoNombre = dInfo.rows[0].depar;
-         // Contar total del departamento seleccionado para calcular porcentajes locales
-         const totalDeptoRes = await pool.query(`
-           SELECT COUNT(*) FROM sucursales 
-           WHERE activo = true AND UPPER(TRIM(departamento)) = UPPER(TRIM($1))
-         `, [deptoNombre]);
-         const totalDepto = parseInt(totalDeptoRes.rows[0].count) || 0;
+      const dInfo = await pool.query('SELECT depar FROM departamentos WHERE id = $1', [departamento_id]);
+      if (dInfo.rows.length > 0) {
+        const deptoNombre = dInfo.rows[0].depar;
+        totalTiendasQuery += ' AND UPPER(TRIM(departamento)) = UPPER(TRIM($1))';
+        munCountQuery += ' AND UPPER(TRIM(departamento)) = UPPER(TRIM($1))';
+        params.push(deptoNombre);
+      }
+    }
 
-         // Obtener municipios de ESE departamento
-         const munRes = await pool.query(`
-           SELECT UPPER(TRIM(municipio)) as nombre, COUNT(*) as cantidad,
-                  ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
-           FROM sucursales 
-           WHERE activo = true AND UPPER(TRIM(departamento)) = UPPER(TRIM($2))
-           GROUP BY UPPER(TRIM(municipio)) ORDER BY cantidad DESC
-         `, [totalDepto, deptoNombre]);
-         munResults = munRes.rows;
-       }
+    const totalRes = await pool.query(totalTiendasQuery, params);
+    const deptoCountRes = await pool.query(deptoCountQuery); // Los deptos con tiendas siempre se cuentan global
+    const munCountRes = await pool.query(munCountQuery, params);
+
+    // 3. Obtener los datos para el gráfico
+    let chartData;
+    if (departamento_id && departamento_id !== '0') {
+      // Vista de Municipios dentro del departamento seleccionado
+      const res = await pool.query(`
+        SELECT UPPER(TRIM(municipio)) as nombre, COUNT(*) as cantidad,
+               ROUND((COUNT(*)::numeric / NULLIF($2, 0)) * 100, 2) as porcentaje
+        FROM sucursales 
+        WHERE activo = true AND UPPER(TRIM(departamento)) = UPPER(TRIM($1))
+        GROUP BY UPPER(TRIM(municipio)) ORDER BY cantidad DESC
+      `, [params[0], totalRes.rows[0].count]);
+      chartData = res.rows;
     } else {
-       // Vista Nacional: Porcentajes de todos los municipios del país
-       const munRes = await pool.query(`
-         SELECT UPPER(TRIM(municipio)) as nombre, COUNT(*) as cantidad,
-                ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
-         FROM sucursales WHERE activo = true
-         GROUP BY UPPER(TRIM(municipio)) ORDER BY cantidad DESC
-       `, [totalGeneral]);
-       munResults = munRes.rows;
+      // Vista Nacional por Departamentos
+      const res = await pool.query(`
+        SELECT UPPER(TRIM(departamento)) as nombre, COUNT(*) as cantidad, 
+               ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
+        FROM sucursales WHERE activo = true
+        GROUP BY UPPER(TRIM(departamento)) ORDER BY cantidad DESC
+      `, [totalRes.rows[0].count]);
+      chartData = res.rows;
     }
 
     res.json({
-      total: totalGeneral,
-      por_departamento: deptoRes.rows,
-      por_municipio: munResults
+      total: parseInt(totalRes.rows[0].count),
+      total_deptos: parseInt(deptoCountRes.rows[0].count),
+      total_muns: parseInt(munCountRes.rows[0].count),
+      por_departamento: (departamento_id && departamento_id !== '0') ? [] : chartData,
+      por_municipio: (departamento_id && departamento_id !== '0') ? chartData : []
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
