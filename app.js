@@ -808,7 +808,7 @@ app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
     const totalGlobalRes = await pool.query('SELECT COUNT(*) FROM sucursales WHERE activo = true');
     const totalGeneral = parseInt(totalGlobalRes.rows[0].count);
 
-    // Estadísticas por Departamento (Nacional)
+    // 1. Stats por Departamento
     const deptoRes = await pool.query(`
       SELECT UPPER(TRIM(departamento)) as nombre, COUNT(*) as cantidad, 
              ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
@@ -818,7 +818,6 @@ app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
 
     let munResults = [];
     if (departamento_id && departamento_id !== '0') {
-       // Obtener nombre del depto para filtrar
        const dInfo = await pool.query('SELECT depar FROM departamentos WHERE id = $1', [departamento_id]);
        if (dInfo.rows.length > 0) {
          const deptoNombre = dInfo.rows[0].depar;
@@ -834,7 +833,6 @@ app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
          munResults = munRes.rows;
        }
     } else {
-       // Nacional por Municipio
        const munRes = await pool.query(`
          SELECT UPPER(TRIM(municipio)) as nombre, COUNT(*) as cantidad,
                 ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
