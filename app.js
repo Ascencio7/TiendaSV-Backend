@@ -861,10 +861,11 @@ app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
 });
 
 
-// --- CENSO NACIONAL DETALLADO DE TIENDAS PARA EL GOBIERNO ---
+// --- CENSO NACIONAL FILTRADO PARA ADMINISTRADOR ---
 app.get('/admin/censo-nacional', async (req, res) => {
+  const { departamento_id, municipio } = req.query;
   try {
-    const query = `
+    let query = `
       SELECT 
         s.sucursal_id,
         UPPER(s.nombre) as tienda,
@@ -877,16 +878,29 @@ app.get('/admin/censo-nacional', async (req, res) => {
         s.activo
       FROM sucursales s
       LEFT JOIN usuarios u ON s.sucursal_id = u.sucursal_id AND u.rol = 'vendedor'
-      ORDER BY s.departamento ASC, s.municipio ASC, s.nombre ASC
+      WHERE s.activo = true
     `;
-    const result = await pool.query(query);
-    res.json(result.rows);
-  } catch (err) {
-    console.error("ERROR EN CENSO:", err.message);
-    res.status(500).json({ error: "Error al generar el censo nacional" });
-  }
-});
+    
+    let params = [];
+    
+    if (departamento_id && departamento_id !== '0') {
+      const dInfo = await pool.query('SELECT depar FROM departamentos WHERE departamentosid = $1', [departamento_id]);
+      if (dInfo.rows.length > 0) {
+        params.push(dInfo.rows[0].depar);
+        query += ` AND (s.departamento ILIKE $${params.length} OR translate(UPPER(TRIM(s.departamento)), 'ÁÉÍÓÚ', 'AEIOU') = translate(UPPER(TRIM($${params.length})), 'ÁÉÍÓÚ', 'AEIOU'))`;
+      }
+    }
+    
+    if (municipio && municipio !== '' && municipio !== 'Todos los Municipios') {
+      params.push(municipio);
+      query += ` AND (s.municipio ILIKE $${params.length} OR translate(UPPER(TRIM(s.municipio)), 'ÁÉÍÓÚ', 'AEIOU') = translate(UPPER(TRIM($${params.length})), 'ÁÉÍÓÚ', 'AEIOU'))`;
+    }
 
+    query += ` ORDER BY s.departamento ASC, s.municipio ASC, s.nombre ASC`;
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 
 // PRODUCTOS
