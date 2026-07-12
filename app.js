@@ -861,6 +861,31 @@ app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
 });
 
 
+// --- CENSO NACIONAL DETALLADO DE TIENDAS ---
+app.get('/admin/censo-nacional', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        s.sucursal_id,
+        UPPER(s.nombre) as tienda,
+        UPPER(s.departamento) as departamento,
+        UPPER(s.municipio) as municipio,
+        s.direccion,
+        COALESCE(u.nombre, 'SIN ASIGNAR') as responsable,
+        COALESCE(u.telefono, 'N/A') as telefono,
+        s.activo
+      FROM sucursales s
+      LEFT JOIN usuarios u ON s.sucursal_id = u.sucursal_id AND u.rol = 'vendedor'
+      ORDER BY s.departamento ASC, s.municipio ASC, s.nombre ASC
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 // PRODUCTOS
 
