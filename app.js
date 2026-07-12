@@ -802,68 +802,75 @@ app.get('/admin/detalle-repartidor/:usuario_id', async (req, res) => {
 
 
 // Obtener resumen de tiendas por ubicación (Departamento/Municipio) y porcentajes
-// --- ESTADÍSTICAS DE TIENDAS PARA ADMINISTRADOR (LÓGICA MEJORADA) ---
+// --- ESTADÍSTICAS DE TIENDAS PARA ADMINISTRADOR (FINAL OPTIMIZADO) ---
 app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
   const { departamento_id } = req.query;
   try {
-    // Total general de tiendas activas (Base para porcentajes nacionales)
+    // 1. Obtener el total general de tiendas activas a nivel nacional
     const totalGlobalRes = await pool.query('SELECT COUNT(*) FROM sucursales WHERE activo = true');
     const totalGeneral = parseInt(totalGlobalRes.rows[0].count) || 0;
 
-    // Estadísticas por Departamento (Vista Nacional)
+    // 2. Obtener estadísticas agrupadas por Departamento (Vista Nacional)
     const deptoRes = await pool.query(`
       SELECT UPPER(TRIM(departamento)) as nombre, COUNT(*) as cantidad, 
              ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
-      FROM sucursales WHERE activo = true
-      GROUP BY UPPER(TRIM(departamento)) ORDER BY cantidad DESC
+      FROM sucursales 
+      WHERE activo = true
+      GROUP BY UPPER(TRIM(departamento)) 
+      ORDER BY cantidad DESC
     `, [totalGeneral]);
 
     let munResults = [];
     
-    // Lógica de Filtrado por Departamento/Municipio
+    // 3. Lógica de filtrado dinámico
     if (departamento_id && departamento_id !== '0') {
-       // Obtenemos el nombre oficial del departamento desde la tabla maestra
+       // Si hay un departamento seleccionado, buscamos su nombre en la tabla departamentos
        const dInfo = await pool.query('SELECT depar FROM departamentos WHERE id = $1', [departamento_id]);
        
        if (dInfo.rows.length > 0) {
          const deptoNombre = dInfo.rows[0].depar;
          
-         // Contamos tiendas en ese departamento (usando ILIKE para máxima compatibilidad)
+         // Contamos cuántas tiendas hay en ese departamento específico (Total para % del depto)
          const totalDeptoRes = await pool.query(`
-            SELECT COUNT(*) FROM sucursales 
-            WHERE activo = true AND (departamento ILIKE $1 OR UPPER(TRIM(departamento)) = UPPER(TRIM($1)))
+           SELECT COUNT(*) FROM sucursales 
+           WHERE activo = true AND UPPER(TRIM(departamento)) = UPPER(TRIM($1))
          `, [deptoNombre]);
          const totalDepto = parseInt(totalDeptoRes.rows[0].count) || 0;
 
-         // Obtenemos los municipios de ese departamento y sus porcentajes relativos
+         // Obtenemos los municipios de ese departamento y su % relativo al departamento
          const munRes = await pool.query(`
            SELECT UPPER(TRIM(municipio)) as nombre, COUNT(*) as cantidad,
                   ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
            FROM sucursales 
-           WHERE activo = true AND (departamento ILIKE $2 OR UPPER(TRIM(departamento)) = UPPER(TRIM($2)))
-           GROUP BY UPPER(TRIM(municipio)) ORDER BY cantidad DESC
+           WHERE activo = true AND UPPER(TRIM(departamento)) = UPPER(TRIM($2))
+           GROUP BY UPPER(TRIM(municipio)) 
+           ORDER BY cantidad DESC
          `, [totalDepto, deptoNombre]);
          munResults = munRes.rows;
        }
     } else {
-       // Vista Nacional: Municipios de todo el país respecto al total nacional
+       // Si NO hay departamento seleccionado, devolvemos todos los municipios del país con % nacional
        const munRes = await pool.query(`
          SELECT UPPER(TRIM(municipio)) as nombre, COUNT(*) as cantidad,
                 ROUND((COUNT(*)::numeric / NULLIF($1, 0)) * 100, 2) as porcentaje
-         FROM sucursales WHERE activo = true
-         GROUP BY UPPER(TRIM(municipio)) ORDER BY cantidad DESC
+         FROM sucursales 
+         WHERE activo = true
+         GROUP BY UPPER(TRIM(municipio)) 
+         ORDER BY cantidad DESC
        `, [totalGeneral]);
        munResults = munRes.rows;
     }
 
+    // Devolvemos la respuesta estructurada para los Spinners y Gráficos en Android
     res.json({
       total: totalGeneral,
       por_departamento: deptoRes.rows,
       por_municipio: munResults
     });
+
   } catch (err) {
-    console.error("Error en stats:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("ERROR EN STATS SUCURSALES:", err.message);
+    res.status(500).json({ error: "Error al obtener estadísticas de ubicación" });
   }
 });
 
