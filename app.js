@@ -861,10 +861,11 @@ app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
 });
 
 
-// --- CENSO NACIONAL FILTRADO PARA ADMINISTRADOR ---
+// Censo Nacional: Filtros
 app.get('/admin/censo-nacional', async (req, res) => {
   const { departamento_id, municipio } = req.query;
   try {
+    // Obtener por una consulta los datos de las tiendas y sus vendedores
     let query = `
       SELECT 
         s.sucursal_id,
@@ -883,19 +884,24 @@ app.get('/admin/censo-nacional', async (req, res) => {
     
     let params = [];
     
+    // Se filtra por departamento
     if (departamento_id && departamento_id !== '0') {
       const dInfo = await pool.query('SELECT depar FROM departamentos WHERE departamentosid = $1', [departamento_id]);
       if (dInfo.rows.length > 0) {
         params.push(dInfo.rows[0].depar);
+        // Se compara acentos y mayusculas insensiblemente para evitar problemas de datos vacios
         query += ` AND (s.departamento ILIKE $${params.length} OR translate(UPPER(TRIM(s.departamento)), 'ÁÉÍÓÚ', 'AEIOU') = translate(UPPER(TRIM($${params.length})), 'ÁÉÍÓÚ', 'AEIOU'))`;
       }
     }
     
+    // Se filtra por municipio y se compara acentos y mayusculas insensiblemente para evitar problemas de datos vacios
     if (municipio && municipio !== '' && municipio !== 'Todos los Municipios') {
       params.push(municipio);
+      // Se compara acentos y mayusculas insensiblemente para evitar problemas de datos vacios
       query += ` AND (s.municipio ILIKE $${params.length} OR translate(UPPER(TRIM(s.municipio)), 'ÁÉÍÓÚ', 'AEIOU') = translate(UPPER(TRIM($${params.length})), 'ÁÉÍÓÚ', 'AEIOU'))`;
     }
 
+    // Se ordena por departamento y municipio ascendente
     query += ` ORDER BY s.departamento ASC, s.municipio ASC, s.nombre ASC`;
     const result = await pool.query(query, params);
     res.json(result.rows);
