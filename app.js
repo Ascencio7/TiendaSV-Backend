@@ -137,8 +137,9 @@ app.post('/login', async (req, res) => {
         mensaje: 'Bienvenido',
         usuario_id: result.rows[0].usuario_id,
         nombre: result.rows[0].nombre,
+        correo: result.rows[0].correo,
         rol: result.rows[0].rol,
-        sucursal_id: result.rows[0].sucursal_id, // <--- ESTO ES VITAL NO ELIMINAR
+        sucursal_id: result.rows[0].sucursal_id,
         token: 'token_simulado_123' 
     });
     } else {
@@ -1331,7 +1332,9 @@ app.get('/repartidor/mis-pagos/:repartidor_id', async (req, res) => {
        FROM pagos_repartidores p
        JOIN sucursales s ON p.sucursal_id = s.sucursal_id
        JOIN usuarios u ON p.repartidor_id = u.usuario_id
-       WHERE p.repartidor_id = $1 ORDER BY p.fecha DESC`, [repartidor_id]
+       WHERE p.repartidor_id = $1
+       ORDER BY p.fecha DESC`,
+      [repartidor_id]
     );
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
