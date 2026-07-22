@@ -1278,36 +1278,25 @@ app.post('/carrito/sync', async (req, res) => {
 
 // --- PAGOS A REPARTIDORES (VERSIÓN CORREGIDA) ---
 
-// Registrar un nuevo pago con hora de El Salvador
+// Registrar un nuevo pago (Backend)
 app.post('/vendedor/repartidores/pagar', async (req, res) => {
   const { repartidor_id, sucursal_id, monto, metodo_pago } = req.body;
-  
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    // 1. Guardar el registro del pago forzando zona horaria de El Salvador (UTC-6)
+    // Forzamos la fecha sin milisegundos al insertar
     await client.query(
       `INSERT INTO pagos_repartidores (repartidor_id, sucursal_id, monto, metodo_pago, fecha) 
-       VALUES ($1, $2, $3, $4, timezone('CST', now()))`,
+       VALUES ($1, $2, $3, $4, date_trunc('second', timezone('CST', now())))`,
       [repartidor_id, sucursal_id, monto, metodo_pago]
     );
-
-    // 2. Actualizar el salario base en la ficha del repartidor
-    await client.query(
-      'UPDATE usuarios SET salario = $1 WHERE usuario_id = $2',
-      [monto, repartidor_id]
-    );
-
+    await client.query('UPDATE usuarios SET salario = $1 WHERE usuario_id = $2', [monto, repartidor_id]);
     await client.query('COMMIT');
     res.status(201).json({ mensaje: 'Pago registrado con éxito' });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR AL PAGAR:", err.message);
     res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
+  } finally { client.release(); }
 });
 
 // Obtener historial con formato de fecha correcto
@@ -1315,20 +1304,18 @@ app.get('/vendedor/repartidores/pagos/:sucursal_id', async (req, res) => {
   const { sucursal_id } = req.params;
   try {
     const result = await pool.query(
-      `SELECT p.pago_id, p.repartidor_id, p.sucursal_id, p.monto, p.metodo_pago, 
+      `SELECT p.pago_id, p.monto, p.metodo_pago, 
               TO_CHAR(p.fecha, 'DD/MM/YYYY HH:MI AM') as fecha,
-              u.nombre as repartidor_nombre
+              u.nombre as repartidor_nombre,
+              u.correo as repartidor_correo
        FROM pagos_repartidores p
        JOIN usuarios u ON p.repartidor_id = u.usuario_id
-       WHERE p.sucursal_id = $1
-       ORDER BY p.fecha DESC`,
-      [sucursal_id]
+       WHERE p.sucursal_id = $1 ORDER BY p.fecha DESC`, [sucursal_id]
     );
     res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 
 
 // Endpoint actualizado en el servidor
@@ -1339,18 +1326,15 @@ app.get('/repartidor/mis-pagos/:repartidor_id', async (req, res) => {
       `SELECT p.*, 
               TO_CHAR(p.fecha, 'DD/MM/YYYY HH:MI AM') as fecha, 
               s.nombre as sucursal_nombre,
-              u.nombre as repartidor_nombre
+              u.nombre as repartidor_nombre,
+              u.correo as repartidor_correo
        FROM pagos_repartidores p
        JOIN sucursales s ON p.sucursal_id = s.sucursal_id
        JOIN usuarios u ON p.repartidor_id = u.usuario_id
-       WHERE p.repartidor_id = $1
-       ORDER BY p.fecha DESC`,
-      [repartidor_id]
+       WHERE p.repartidor_id = $1 ORDER BY p.fecha DESC`, [repartidor_id]
     );
     res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 
