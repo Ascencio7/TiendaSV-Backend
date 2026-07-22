@@ -1276,7 +1276,9 @@ app.post('/carrito/sync', async (req, res) => {
 
 // --- PAGOS A REPARTIDORES ---
 
-// Registrar un nuevo pago y actualizar el salario base del repartidor
+// --- PAGOS A REPARTIDORES (VERSIÓN CORREGIDA) ---
+
+// Registrar un nuevo pago con hora de El Salvador
 app.post('/vendedor/repartidores/pagar', async (req, res) => {
   const { repartidor_id, sucursal_id, monto, metodo_pago } = req.body;
   
@@ -1284,14 +1286,14 @@ app.post('/vendedor/repartidores/pagar', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Guardar el registro del pago en el historial
+    // 1. Guardar el registro del pago forzando zona horaria de El Salvador (UTC-6)
     await client.query(
       `INSERT INTO pagos_repartidores (repartidor_id, sucursal_id, monto, metodo_pago, fecha) 
-       VALUES ($1, $2, $3, $4, NOW())`,
+       VALUES ($1, $2, $3, $4, timezone('CST', now()))`,
       [repartidor_id, sucursal_id, monto, metodo_pago]
     );
 
-    // 2. Actualizar el salario base en la ficha del repartidor (para que quede como último cambio)
+    // 2. Actualizar el salario base en la ficha del repartidor
     await client.query(
       'UPDATE usuarios SET salario = $1 WHERE usuario_id = $2',
       [monto, repartidor_id]
@@ -1308,7 +1310,7 @@ app.post('/vendedor/repartidores/pagar', async (req, res) => {
   }
 });
 
-// Obtener el historial de pagos de una sucursal específica
+// Obtener historial con formato de fecha correcto
 app.get('/vendedor/repartidores/pagos/:sucursal_id', async (req, res) => {
   const { sucursal_id } = req.params;
   try {
