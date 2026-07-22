@@ -1331,15 +1331,26 @@ app.get('/vendedor/repartidores/pagos/:sucursal_id', async (req, res) => {
 });
 
 
-// Método JS añadido a la API
+// Endpoint actualizado en el servidor
 app.get('/repartidor/mis-pagos/:repartidor_id', async (req, res) => {
   const { repartidor_id } = req.params;
-  const result = await pool.query(
-    `SELECT p.*, TO_CHAR(p.fecha, 'DD/MM/YYYY HH:MI AM') as fecha, s.nombre as sucursal_nombre
-     FROM pagos_repartidores p
-     JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-     WHERE p.repartidor_id = $1 ORDER BY p.fecha DESC`, [repartidor_id]);
-  res.json(result.rows);
+  try {
+    const result = await pool.query(
+      `SELECT p.*, 
+              TO_CHAR(p.fecha, 'DD/MM/YYYY HH:MI AM') as fecha, 
+              s.nombre as sucursal_nombre,
+              u.nombre as repartidor_nombre
+       FROM pagos_repartidores p
+       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+       JOIN usuarios u ON p.repartidor_id = u.usuario_id
+       WHERE p.repartidor_id = $1
+       ORDER BY p.fecha DESC`,
+      [repartidor_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 
