@@ -1428,22 +1428,20 @@ app.put('/caja/cierre/:caja_id', async (req, res) => {
   }
 });
 
-// 3. Historial de Cierres con Filtro de Fechas
+// --- ENDPOINTS DE CAJA ACTUALIZADOS (CORRECCIÓN HORA Y TIMEZONE) ---
 app.get('/caja/historial/:vendedor_id', async (req, res) => {
-  const { fecha } = req.query; // Formato YYYY-MM-DD
+  const { fecha } = req.query;
   try {
     let query = `
       SELECT 
-        caja_id,
-        monto_apertura,
-        monto_cierre,
-        ventas_efectivo,
+        caja_id, monto_apertura, monto_cierre, ventas_efectivo,
         (monto_apertura + ventas_efectivo) as monto_esperado,
         (monto_cierre - (monto_apertura + ventas_efectivo)) as diferencia,
-        TO_CHAR(fecha_apertura, 'DD/MM/YYYY') as fecha_apertura_fmt,
-        TO_CHAR(fecha_apertura, 'HH12:MI AM') as hora_apertura_fmt,
-        TO_CHAR(fecha_cierre, 'DD/MM/YYYY') as fecha_cierre_fmt,
-        TO_CHAR(fecha_cierre, 'HH12:MI AM') as hora_cierre_fmt,
+        -- Conversión a zona horaria local (CST) antes de formatear
+        TO_CHAR(fecha_apertura AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'DD/MM/YYYY') as fecha_apertura_fmt,
+        TO_CHAR(fecha_apertura AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'HH12:MI AM') as hora_apertura_fmt,
+        TO_CHAR(fecha_cierre AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'DD/MM/YYYY') as fecha_cierre_fmt,
+        TO_CHAR(fecha_cierre AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'HH12:MI AM') as hora_cierre_fmt,
         estado
       FROM cajas 
       WHERE vendedor_id = $1 AND estado = 'Cerrada'
