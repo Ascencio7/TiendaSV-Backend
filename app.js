@@ -1000,26 +1000,36 @@ app.delete('/productos/:id', async (req, res) => {
 // VENTAS
 
 // Registro con asignación de repartidor
+// REGISTRO DE VENTA ACTUALIZADO (Con gestión de efectivo)
 app.post('/ventas', async (req, res) => {
-  const { producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, repartidor_id } = req.body;
+  const { 
+    producto_id, usuario_id, cantidad, metodoPago, 
+    monto_recibido, vuelto_entregado, // <-- NUEVOS CAMPOS
+    entregaDomicilio, direccionEntrega, telefonoContacto 
+  } = req.body;
+  
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     
-    // Descontar stock
+    // 1. Descontar stock
     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
     
-    // Insertar movimiento con el repartidor específico asignado por el cliente
+    // 2. Registrar movimiento con detalles de efectivo
     await client.query(
       `INSERT INTO movimientos 
-       (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id) 
+       (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, monto_recibido, vuelto_entregado, entrega_domicilio, direccion_entrega, estado_entrega) 
        VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8, $9)`,
-      [producto_id, usuario_id, cantidad, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
-       entregaDomicilio ? 'Pendiente' : 'Completado', repartidor_id || null]
+      [
+        producto_id, usuario_id, cantidad, metodoPago, 
+        monto_recibido || 0, vuelto_entregado || 0, // Guardamos el flujo de efectivo
+        entregaDomicilio, direccionEntrega, 
+        entregaDomicilio ? 'Pendiente' : 'Completado'
+      ]
     );
     
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: "Venta realizada" });
+    res.status(201).json({ mensaje: "Venta registrada con éxito" });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
@@ -1339,6 +1349,57 @@ app.get('/repartidor/mis-pagos/:repartidor_id', async (req, res) => {
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+
+// --- GESTIÓN DE CAJA (FONDO PARA CAMBIO) ---
+
+// Abrir caja (Registrar el monto inicial de efectivo)
+app.post('/caja/apertura', async (req, res) => {
+  const { vendedor_id, sucursal_id, monto_apertura } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO cajas (vendedor_id, sucursal_id, monto_apertura, estado) 
+       VALUES ($1, $2, $3, 'Abierta') RETURNING *`,
+      [vendedor_id, sucursal_id, monto_apertura]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Obtener el estado de la caja actual de un vendedor
+app.get('/caja/estado/:vendedor_id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM cajas WHERE vendedor_id = $1 AND estado = 'Abierta' ORDER BY fecha_apertura DESC LIMIT 1",
+      [req.params.vendedor_id]
+    );
+    if (result.rows.length > 0) {
+      res.json(result.rows[0]);
+    } else {
+      res.status(404).json({ mensaje: "No hay una caja abierta para este usuario" });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Cerrar caja (Registrar el monto final)
+app.put('/caja/cierre/:caja_id', async (req, res) => {
+  const { monto_cierre } = req.body;
+  try {
+    await pool.query(
+      "UPDATE cajas SET monto_cierre = $1, fecha_cierre = NOW(), estado = 'Cerrada' WHERE caja_id = $2",
+      [monto_cierre, req.params.caja_id]
+    );
+    res.json({ mensaje: "Caja cerrada correctamente" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 
 // Mensaje de que la API esta funcionando en RENDER
