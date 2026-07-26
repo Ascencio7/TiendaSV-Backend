@@ -1428,7 +1428,7 @@ app.put('/caja/cierre/:caja_id', async (req, res) => {
   }
 });
 
-// --- ENDPOINTS DE CAJA ACTUALIZADOS (CORRECCIÓN HORA Y TIMEZONE) ---
+// Endpoint del Historial con corrección de zona horaria para El Salvador
 app.get('/caja/historial/:vendedor_id', async (req, res) => {
   const { fecha } = req.query;
   try {
@@ -1437,7 +1437,7 @@ app.get('/caja/historial/:vendedor_id', async (req, res) => {
         caja_id, monto_apertura, monto_cierre, ventas_efectivo,
         (monto_apertura + ventas_efectivo) as monto_esperado,
         (monto_cierre - (monto_apertura + ventas_efectivo)) as diferencia,
-        -- Conversión a zona horaria local (CST) antes de formatear
+        -- Conversión crucial para que la hora coincida con El Salvador
         TO_CHAR(fecha_apertura AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'DD/MM/YYYY') as fecha_apertura_fmt,
         TO_CHAR(fecha_apertura AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'HH12:MI AM') as hora_apertura_fmt,
         TO_CHAR(fecha_cierre AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'DD/MM/YYYY') as fecha_cierre_fmt,
@@ -1446,7 +1446,7 @@ app.get('/caja/historial/:vendedor_id', async (req, res) => {
       FROM cajas 
       WHERE vendedor_id = $1 AND estado = 'Cerrada'
     `;
-    
+
     let params = [req.params.vendedor_id];
 
     if (fecha && fecha !== '') {
