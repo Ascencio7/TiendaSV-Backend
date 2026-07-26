@@ -1368,32 +1368,116 @@ app.post('/caja/apertura', async (req, res) => {
   }
 });
 
-// Obtener el estado de la caja actual de un vendedor
+// --- GESTIÓN AVANZADA DE CAJA ---
+
+// 1. Obtener estado actual y EFECTIVO TOTAL (Para el POS)
 app.get('/caja/estado/:vendedor_id', async (req, res) => {
   try {
-    const result = await pool.query(
+    // Buscamos la caja abierta
+    const cajaRes = await pool.query(
       "SELECT * FROM cajas WHERE vendedor_id = $1 AND estado = 'Abierta' ORDER BY fecha_apertura DESC LIMIT 1",
       [req.params.vendedor_id]
     );
-    if (result.rows.length > 0) {
-      res.json(result.rows[0]);
-    } else {
-      res.status(404).json({ mensaje: "No hay una caja abierta para este usuario" });
+
+    if (cajaRes.rows.length === 0) {
+      return res.status(404).json({ mensaje: "Caja no iniciada" });
     }
+
+    const caja = cajaRes.rows[0];
+
+    // Calculamos el total de ventas en efectivo desde que se abrió la caja
+    const ventasRes = await pool.query(
+      `SELECT COALESCE(SUM(cantidad * precio_unitario), 0) as total_efectivo
+       FROM movimientos m
+       JOIN productos p ON m.producto_id = p.producto_id
+       WHERE m.usuario_id = $1 
+       AND m.metodo_pago = 'Efectivo' 
+       AND m.fecha >= $2`,
+      [req.params.vendedor_id, caja.fecha_apertura]
+    );
+
+    const ventasEfectivo = parseFloat(ventasRes.rows[0].total_efectivo);
+    const efectivoActual = parseFloat(caja.monto_apertura) + ventasEfectivo;
+
+    res.json({
+      ...caja,
+      ventas_efectivo: ventasEfectivo,
+      efectivo_total_sistema: efectivoActual // Este es el valor que el POS debe mostrar
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Cerrar caja (Registrar el monto final)
+// 2. Cerrar Caja con registro de ventas final
 app.put('/caja/cierre/:caja_id', async (req, res) => {
-  const { monto_cierre } = req.body;
+  const { monto_cierre, ventas_efectivo } = req.body;
   try {
     await pool.query(
-      "UPDATE cajas SET monto_cierre = $1, fecha_cierre = NOW(), estado = 'Cerrada' WHERE caja_id = $2",
-      [monto_cierre, req.params.caja_id]
+      `UPDATE cajas SET 
+        monto_cierre = $1, 
+        ventas_efectivo = $2,
+        fecha_cierre = NOW(), 
+        estado = 'Cerrada' 
+       WHERE caja_id = $3`,
+      [monto_cierre, ventas_efectivo, req.params.caja_id]
     );
-    res.json({ mensaje: "Caja cerrada correctamente" });
+    res.json({ mensaje: "Caja cerrada y guardada en el historial" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Historial de Cierres con Filtro de Fechas
+app.get('/caja/historial/:vendedor_id', async (req, res) => {
+  const { fecha } = req.query; // Formato YYYY-MM-DD
+  try {
+    let query = `
+      SELECT 
+        caja_id,
+        monto_apertura,
+        monto_cierre,
+        ventas_efectivo,
+        (monto_apertura + ventas_efectivo) as monto_esperado,
+        (monto_cierre - (monto_apertura + ventas_efectivo)) as diferencia,
+        TO_CHAR(fecha_apertura, 'DD/MM/YYYY') as fecha_apertura_fmt,
+        TO_CHAR(fecha_apertura, 'HH12:MI AM') as hora_apertura_fmt,
+        TO_CHAR(fecha_cierre, 'DD/MM/YYYY') as fecha_cierre_fmt,
+        TO_CHAR(fecha_cierre, 'HH12:MI AM') as hora_cierre_fmt,
+        estado
+      FROM cajas 
+      WHERE vendedor_id = $1 AND estado = 'Cerrada'
+    `;
+    
+    let params = [req.params.vendedor_id];
+
+    if (fecha && fecha !== '') {
+      query += " AND (fecha_apertura::date = $2 OR fecha_cierre::date = $2)";
+      params.push(fecha);
+    }
+
+    query += " ORDER BY fecha_cierre DESC";
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Reporte General de Caja (Estadísticas rápidas)
+app.get('/caja/reporte-resumen/:vendedor_id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT 
+        COUNT(*) as total_cierres,
+        SUM(monto_cierre - monto_apertura) as ingresos_netos_efectivo,
+        AVG(monto_cierre - (monto_apertura + ventas_efectivo)) as promedio_desfase
+       FROM cajas 
+       WHERE vendedor_id = $1 AND estado = 'Cerrada'`,
+      [req.params.vendedor_id]
+    );
+    res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
