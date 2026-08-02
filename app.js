@@ -208,6 +208,19 @@ app.post('/usuarios', async (req, res) => {
 });
 
 
+// Cliente solicita activación
+app.post('/usuarios/solicitar-activacion', async (req, res) => {
+  const { usuario_id, motivo } = req.body;
+  try {
+    await pool.query(
+      'INSERT INTO solicitudes_activacion (usuario_id, motivo) VALUES ($1, $2)',
+      [usuario_id, motivo]
+    );
+    res.status(201).json({ mensaje: 'Solicitud enviada' });
+  } catch (err) { res.status(500).json({ error: 'Ya tienes una solicitud pendiente' }); }
+});
+
+
 
 // MARCAS DE MOTOS
 
@@ -587,7 +600,6 @@ app.get('/admin/reporte-ventas', async (req, res) => {
 
 
 // Reporte de Usuarios con Filtros: Estado, Rol, Usuario Específico
-// Reporte de Usuarios con TODOS los campos para Perfil
 app.get('/admin/reporte-usuarios', async (req, res) => {
   const { activo, rol, usuario_id } = req.query;
   try {
@@ -803,17 +815,16 @@ app.get('/admin/detalle-repartidor/:usuario_id', async (req, res) => {
 
 
 // Obtener resumen de tiendas por ubicación (Departamento/Municipio) y porcentajes
-// --- ESTADÍSTICAS DE TIENDAS PARA ADMINISTRADOR (FIX FINAL) ---
 app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
   const { departamento_id } = req.query;
   try {
-    // 1. Obtener conteos base (Globales por defecto)
+    // Obtener conteos base (Globales por defecto)
     let totalTiendasQuery = 'SELECT COUNT(*) FROM sucursales WHERE activo = true';
     let deptoCountQuery = 'SELECT COUNT(DISTINCT UPPER(TRIM(departamento))) FROM sucursales WHERE activo = true';
     let munCountQuery = 'SELECT COUNT(DISTINCT UPPER(TRIM(municipio))) FROM sucursales WHERE activo = true';
     let params = [];
 
-    // 2. Filtrado por Departamento (Corregido: departamentosid y comparación robusta)
+    // Filtrado por Departamento (Corregido: departamentosid y comparación robusta)
     if (departamento_id && departamento_id !== '0') {
       const dInfo = await pool.query('SELECT depar FROM departamentos WHERE departamentosid = $1', [departamento_id]);
       if (dInfo.rows.length > 0) {
@@ -830,7 +841,7 @@ app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
     const deptoCountRes = await pool.query(deptoCountQuery);
     const munCountRes = await pool.query(munCountQuery, params);
 
-    // 3. Obtener los datos para el gráfico (Normalizados)
+    // Obtener los datos para el gráfico (Normalizados)
     let chartData;
     if (departamento_id && departamento_id !== '0') {
       const res = await pool.query(`
@@ -908,6 +919,54 @@ app.get('/admin/censo-nacional', async (req, res) => {
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+
+// Admin obtiene solicitudes (Pendientes y Rechazadas) con Foto de Perfil
+app.get('/admin/solicitudes-activacion', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        s.solicitud_id, s.usuario_id, s.motivo, s.estado, s.mensaje_admin, 
+        TO_CHAR(s.fecha_solicitud, 'DD/MM/YYYY HH:MI AM') as fecha_solicitud,
+        u.nombre as nombre_usuario, u.correo as correo_usuario, 
+        u.telefono as telefono_usuario, u.activo as usuario_activo,
+        u.foto_perfil
+      FROM solicitudes_activacion s
+      JOIN usuarios u ON s.usuario_id = u.usuario_id
+      WHERE s.estado IN ('pendiente', 'rechazada')
+      ORDER BY s.fecha_solicitud DESC
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) { 
+    console.error("ERROR ACTIVACIONES:", err.message);
+    res.status(500).json({ error: 'Error al obtener solicitudes' }); 
+  }
+});
+
+
+// Admin procesa la solicitud (Activa cuenta y guarda mensaje)
+app.put('/admin/solicitudes-activacion/:id', async (req, res) => {
+  const { id } = req.params;
+  const { estado, mensaje_admin, usuario_id } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Actualizar estado de la solicitud
+    await client.query(
+      'UPDATE solicitudes_activacion SET estado = $1, mensaje_admin = $2, fecha_resolucion = NOW() WHERE solicitud_id = $3',
+      [estado, mensaje_admin, id]
+    );
+    // Si se acepta, activar al usuario
+    if (estado === 'aceptada') {
+      await client.query('UPDATE usuarios SET activo = true WHERE usuario_id = $1', [usuario_id]);
+    }
+    await client.query('COMMIT');
+    res.json({ mensaje: `Cuenta ${estado === 'aceptada' ? 'activada' : 'rechazada'}` });
+  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
+  finally { client.release(); }
+});
+
 
 
 // PRODUCTOS
@@ -1287,8 +1346,6 @@ app.post('/carrito/sync', async (req, res) => {
 
 // --- PAGOS A REPARTIDORES ---
 
-// --- PAGOS A REPARTIDORES (VERSIÓN CORREGIDA) ---
-
 // Registrar un nuevo pago (Backend)
 app.post('/vendedor/repartidores/pagar', async (req, res) => {
   const { repartidor_id, sucursal_id, monto, metodo_pago } = req.body;
@@ -1328,8 +1385,6 @@ app.get('/vendedor/repartidores/pagos/:sucursal_id', async (req, res) => {
 });
 
 
-
-// Endpoint actualizado en el servidor
 app.get('/repartidor/mis-pagos/:repartidor_id', async (req, res) => {
   const { repartidor_id } = req.params;
   try {
@@ -1351,8 +1406,6 @@ app.get('/repartidor/mis-pagos/:repartidor_id', async (req, res) => {
 });
 
 
-// --- GESTIÓN DE CAJA (FONDO PARA CAMBIO) ---
-
 // Abrir caja (Registrar el monto inicial de efectivo)
 app.post('/caja/apertura', async (req, res) => {
   const { vendedor_id, sucursal_id, monto_apertura } = req.body;
@@ -1368,9 +1421,8 @@ app.post('/caja/apertura', async (req, res) => {
   }
 });
 
-// --- GESTIÓN AVANZADA DE CAJA ---
 
-// 1. Obtener estado actual y EFECTIVO TOTAL (Para el POS)
+// Obtener estado actual y EFECTIVO TOTAL (Para el POS)
 app.get('/caja/estado/:vendedor_id', async (req, res) => {
   try {
     // Buscamos la caja abierta
@@ -1409,7 +1461,7 @@ app.get('/caja/estado/:vendedor_id', async (req, res) => {
   }
 });
 
-// 2. Cerrar Caja con registro de ventas final
+// Cerrar Caja con registro de ventas final
 app.put('/caja/cierre/:caja_id', async (req, res) => {
   const { monto_cierre, ventas_efectivo } = req.body;
   try {
@@ -1463,7 +1515,7 @@ app.get('/caja/historial/:vendedor_id', async (req, res) => {
   }
 });
 
-// 4. Reporte General de Caja (Estadísticas rápidas)
+// Reporte General de Caja (Estadísticas rápidas)
 app.get('/caja/reporte-resumen/:vendedor_id', async (req, res) => {
   try {
     const result = await pool.query(
@@ -1480,69 +1532,6 @@ app.get('/caja/reporte-resumen/:vendedor_id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-
-// --- ENDPOINTS PARA ACTIVACIÓN DE CUENTAS ---
-
-// Cliente solicita activación
-app.post('/usuarios/solicitar-activacion', async (req, res) => {
-  const { usuario_id, motivo } = req.body;
-  try {
-    await pool.query(
-      'INSERT INTO solicitudes_activacion (usuario_id, motivo) VALUES ($1, $2)',
-      [usuario_id, motivo]
-    );
-    res.status(201).json({ mensaje: 'Solicitud enviada' });
-  } catch (err) { res.status(500).json({ error: 'Ya tienes una solicitud pendiente' }); }
-});
-
-// Admin obtiene solicitudes (Pendientes y Rechazadas) con Foto de Perfil
-app.get('/admin/solicitudes-activacion', async (req, res) => {
-  try {
-    const query = `
-      SELECT 
-        s.solicitud_id, s.usuario_id, s.motivo, s.estado, s.mensaje_admin, 
-        TO_CHAR(s.fecha_solicitud, 'DD/MM/YYYY HH:MI AM') as fecha_solicitud,
-        u.nombre as nombre_usuario, u.correo as correo_usuario, 
-        u.telefono as telefono_usuario, u.activo as usuario_activo,
-        u.foto_perfil
-      FROM solicitudes_activacion s
-      JOIN usuarios u ON s.usuario_id = u.usuario_id
-      WHERE s.estado IN ('pendiente', 'rechazada')
-      ORDER BY s.fecha_solicitud DESC
-    `;
-    const result = await pool.query(query);
-    res.json(result.rows);
-  } catch (err) { 
-    console.error("ERROR ACTIVACIONES:", err.message);
-    res.status(500).json({ error: 'Error al obtener solicitudes' }); 
-  }
-});
-
-
-// Admin procesa la solicitud (Activa cuenta y guarda mensaje)
-app.put('/admin/solicitudes-activacion/:id', async (req, res) => {
-  const { id } = req.params;
-  const { estado, mensaje_admin, usuario_id } = req.body;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    // 1. Actualizar estado de la solicitud
-    await client.query(
-      'UPDATE solicitudes_activacion SET estado = $1, mensaje_admin = $2, fecha_resolucion = NOW() WHERE solicitud_id = $3',
-      [estado, mensaje_admin, id]
-    );
-    // 2. Si se acepta, activar al usuario
-    if (estado === 'aceptada') {
-      await client.query('UPDATE usuarios SET activo = true WHERE usuario_id = $1', [usuario_id]);
-    }
-    await client.query('COMMIT');
-    res.json({ mensaje: `Cuenta ${estado === 'aceptada' ? 'activada' : 'rechazada'}` });
-  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
-  finally { client.release(); }
-});
-
-
 
 
 
