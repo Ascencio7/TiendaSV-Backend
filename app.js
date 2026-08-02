@@ -1496,21 +1496,36 @@ app.post('/usuarios/solicitar-activacion', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Ya tienes una solicitud pendiente' }); }
 });
 
-// Admin obtiene solicitudes (Pendientes y Rechazadas)
+// Admin obtiene solicitudes de activación (Pendientes y Rechazadas) con Foto de Perfil
 app.get('/admin/solicitudes-activacion', async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT s.*, u.nombre as nombre_usuario, u.correo as correo_usuario, 
-             u.telefono as telefono_usuario, u.activo as usuario_activo
+    const query = `
+      SELECT 
+        s.solicitud_id, 
+        s.usuario_id, 
+        s.motivo, 
+        s.estado, 
+        s.mensaje_admin, 
+        s.fecha_solicitud,
+        u.nombre as nombre_usuario, 
+        u.correo as correo_usuario, 
+        u.telefono as telefono_usuario, 
+        u.activo as usuario_activo,
+        u.foto_perfil
       FROM solicitudes_activacion s
       JOIN usuarios u ON s.usuario_id = u.usuario_id
       WHERE s.estado IN ('pendiente', 'rechazada')
-      ORDER BY s.fecha_solicitud DESC`);
+      ORDER BY s.fecha_solicitud DESC
+    `;
+    
+    const result = await pool.query(query);
     res.json(result.rows);
   } catch (err) { 
-    res.status(500).json({ error: err.message }); 
+    console.error("ERROR FETCHING ACTIVATIONS:", err.message);
+    res.status(500).json({ error: 'Error al obtener solicitudes' }); 
   }
 });
+
 
 // Admin procesa la solicitud (Activa cuenta y guarda mensaje)
 app.put('/admin/solicitudes-activacion/:id', async (req, res) => {
