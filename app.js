@@ -1496,7 +1496,7 @@ app.post('/usuarios/solicitar-activacion', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Ya tienes una solicitud pendiente' }); }
 });
 
-// Admin obtiene solicitudes pendientes con datos del usuario
+// Admin obtiene solicitudes (Pendientes y Rechazadas)
 app.get('/admin/solicitudes-activacion', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -1504,10 +1504,12 @@ app.get('/admin/solicitudes-activacion', async (req, res) => {
              u.telefono as telefono_usuario, u.activo as usuario_activo
       FROM solicitudes_activacion s
       JOIN usuarios u ON s.usuario_id = u.usuario_id
-      WHERE s.estado = 'pendiente'
+      WHERE s.estado IN ('pendiente', 'rechazada')
       ORDER BY s.fecha_solicitud DESC`);
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 // Admin procesa la solicitud (Activa cuenta y guarda mensaje)
@@ -1531,6 +1533,9 @@ app.put('/admin/solicitudes-activacion/:id', async (req, res) => {
   } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
   finally { client.release(); }
 });
+
+
+
 
 
 // Mensaje de que la API esta funcionando en RENDER
