@@ -1482,6 +1482,55 @@ app.get('/caja/reporte-resumen/:vendedor_id', async (req, res) => {
 });
 
 
+// --- ENDPOINTS PARA ACTIVACIÓN DE CUENTAS ---
+
+// Cliente solicita activación
+app.post('/usuarios/solicitar-activacion', async (req, res) => {
+  const { usuario_id, motivo } = req.body;
+  try {
+    await pool.query(
+      'INSERT INTO solicitudes_activacion (usuario_id, motivo) VALUES ($1, $2)',
+      [usuario_id, motivo]
+    );
+    res.status(201).json({ mensaje: 'Solicitud enviada' });
+  } catch (err) { res.status(500).json({ error: 'Ya tienes una solicitud pendiente' }); }
+});
+
+// Admin obtiene solicitudes pendientes con datos del usuario
+app.get('/admin/solicitudes-activacion', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT s.*, u.nombre as nombre_usuario, u.correo as correo_usuario, 
+             u.telefono as telefono_usuario, u.activo as usuario_activo
+      FROM solicitudes_activacion s
+      JOIN usuarios u ON s.usuario_id = u.usuario_id
+      WHERE s.estado = 'pendiente'
+      ORDER BY s.fecha_solicitud DESC`);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Admin procesa la solicitud (Activa cuenta y guarda mensaje)
+app.put('/admin/solicitudes-activacion/:id', async (req, res) => {
+  const { id } = req.params;
+  const { estado, mensaje_admin, usuario_id } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // 1. Actualizar estado de la solicitud
+    await client.query(
+      'UPDATE solicitudes_activacion SET estado = $1, mensaje_admin = $2, fecha_resolucion = NOW() WHERE solicitud_id = $3',
+      [estado, mensaje_admin, id]
+    );
+    // 2. Si se acepta, activar al usuario
+    if (estado === 'aceptada') {
+      await client.query('UPDATE usuarios SET activo = true WHERE usuario_id = $1', [usuario_id]);
+    }
+    await client.query('COMMIT');
+    res.json({ mensaje: `Cuenta ${estado === 'aceptada' ? 'activada' : 'rechazada'}` });
+  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
+  finally { client.release(); }
+});
 
 
 // Mensaje de que la API esta funcionando en RENDER
