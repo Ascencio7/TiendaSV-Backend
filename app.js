@@ -1496,32 +1496,25 @@ app.post('/usuarios/solicitar-activacion', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Ya tienes una solicitud pendiente' }); }
 });
 
-// Admin obtiene solicitudes de activación (Pendientes y Rechazadas) con Foto de Perfil
+// Admin obtiene solicitudes (Pendientes y Rechazadas) con Foto de Perfil
 app.get('/admin/solicitudes-activacion', async (req, res) => {
   try {
     const query = `
       SELECT 
-        s.solicitud_id, 
-        s.usuario_id, 
-        s.motivo, 
-        s.estado, 
-        s.mensaje_admin, 
-        s.fecha_solicitud,
-        u.nombre as nombre_usuario, 
-        u.correo as correo_usuario, 
-        u.telefono as telefono_usuario, 
-        u.activo as usuario_activo,
+        s.solicitud_id, s.usuario_id, s.motivo, s.estado, s.mensaje_admin, 
+        TO_CHAR(s.fecha_solicitud, 'DD/MM/YYYY HH:MI AM') as fecha_solicitud,
+        u.nombre as nombre_usuario, u.correo as correo_usuario, 
+        u.telefono as telefono_usuario, u.activo as usuario_activo,
         u.foto_perfil
       FROM solicitudes_activacion s
       JOIN usuarios u ON s.usuario_id = u.usuario_id
       WHERE s.estado IN ('pendiente', 'rechazada')
       ORDER BY s.fecha_solicitud DESC
     `;
-    
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (err) { 
-    console.error("ERROR FETCHING ACTIVATIONS:", err.message);
+    console.error("ERROR ACTIVACIONES:", err.message);
     res.status(500).json({ error: 'Error al obtener solicitudes' }); 
   }
 });
