@@ -2,6 +2,8 @@ import express from 'express';
 import pkg from 'pg';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import nodemailer from 'nodemailer'; // <--- AGREGAR ESTO
+
 
 dotenv.config();
 
@@ -27,6 +29,44 @@ pool.connect()
   })
   .catch(err => console.error("❌ Error conectando a Supabase:", err));
 
+
+
+
+// CONFIGURACIÓN DE NODEMAILER (Cópialo después de crear el 'app')
+const transporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+// MÉTODO PARA ENVIAR CORREOS
+const enviarCorreoNotificacion = async (destinatario, nombreUsuario, tipoAccion) => {
+  let asunto = "";
+  let mensaje = "";
+
+  if (tipoAccion === 'reset_password') {
+    asunto = "🔐 Seguridad: Contraseña Actualizada - TiendaSV";
+    mensaje = `Hola ${nombreUsuario},\n\nTe informamos que la contraseña de tu cuenta en TiendaSV ha sido actualizada exitosamente.\n\nSi no realizaste este cambio, por favor contacta con soporte de inmediato.\n\nSaludos,\nEquipo de TiendaSV.`;
+  }
+
+  const mailOptions = {
+    from: `"TiendaSV Soporte" <${process.env.EMAIL_USER}>`,
+    to: destinatario,
+    subject: asunto,
+    text: mensaje
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ Correo enviado con éxito a: ${destinatario}`);
+  } catch (error) {
+    console.error("❌ Error al enviar correo:", error.message);
+  }
+};
 
 
  // Endpoints de TiendaSV - Jonathan Vladimir Ascencio Ramos 
