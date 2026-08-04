@@ -308,28 +308,61 @@ app.get('/marcas/autos', async (req, res) => {
 
 
 // Restablecer Contraseña
+// app.put('/usuarios/reset-password', async (req, res) => {
+//   const { correo, nuevaPassword } = req.body;
+
+//   if (!correo || !nuevaPassword) {
+//     return res.status(400).json({ error: 'Faltan datos obligatorios (correo o nuevaPassword)' });
+//   }
+//   try {
+//     await client.query('BEGIN');
+//     const resUser = await client.query(
+//       `UPDATE usuarios SET 
+//         nombre = $1, correo = $2, telefono = $3, 
+//         password = COALESCE(crypt($4, gen_salt('bf', 10)), password), 
+//         foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
+//         -- ... otros campos
+//       WHERE usuario_id = $25 RETURNING sucursal_id`,
+//       [ nuevaPassword, correo]
+//     );
+
+//     if (result.rows.length > 0) {
+//       res.status(200).json({ mensaje: 'Contraseña actualizada con éxito' });
+//     } else {
+//       // Si result.rows está vacío es porque el WHERE correo = $2 no encontró coincidencias
+//       res.status(404).json({ error: 'El correo electrónico no está registrado' });
+//     }
+//   } catch (err) {
+//     console.error("ERROR RESET PASSWORD:", err.message);
+//     res.status(500).json({ error: 'Error interno del servidor' });
+//   }
+// });
+
+// Restablecer Contraseña (ACTUALIZADO CON ENVÍO DE CORREO)
 app.put('/usuarios/reset-password', async (req, res) => {
   const { correo, nuevaPassword } = req.body;
 
   if (!correo || !nuevaPassword) {
     return res.status(400).json({ error: 'Faltan datos obligatorios (correo o nuevaPassword)' });
   }
+
   try {
-    await client.query('BEGIN');
-    const resUser = await client.query(
-      `UPDATE usuarios SET 
-        nombre = $1, correo = $2, telefono = $3, 
-        password = COALESCE(crypt($4, gen_salt('bf', 10)), password), 
-        foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
-        -- ... otros campos
-      WHERE usuario_id = $25 RETURNING sucursal_id`,
-      [ nuevaPassword, correo]
+    // Actualizamos la contraseña y obtenemos el nombre para el correo personalizado
+    const result = await pool.query(
+      "UPDATE usuarios SET password = crypt($1, gen_salt('bf', 10)) WHERE correo = $2 RETURNING nombre, correo",
+      [nuevaPassword, correo]
     );
 
     if (result.rows.length > 0) {
-      res.status(200).json({ mensaje: 'Contraseña actualizada con éxito' });
+      const usuario = result.rows[0];
+
+      // Disparar el envío de correo de forma asíncrona (no bloquea la respuesta al App)
+      enviarCorreoNotificacion(usuario.correo, usuario.nombre, 'reset_password');
+
+      res.status(200).json({ 
+        mensaje: 'Contraseña actualizada con éxito. Se ha enviado un correo de confirmación.' 
+      });
     } else {
-      // Si result.rows está vacío es porque el WHERE correo = $2 no encontró coincidencias
       res.status(404).json({ error: 'El correo electrónico no está registrado' });
     }
   } catch (err) {
@@ -337,6 +370,7 @@ app.put('/usuarios/reset-password', async (req, res) => {
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
+
 
 
 
