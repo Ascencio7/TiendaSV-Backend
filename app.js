@@ -338,36 +338,43 @@ app.get('/marcas/autos', async (req, res) => {
 //   }
 // });
 
-// Restablecer Contraseña (ACTUALIZADO CON ENVÍO DE CORREO)
+// Restablecer Contraseña (CORREGIDO Y SEGURO)
 app.put('/usuarios/reset-password', async (req, res) => {
-  const { correo, nuevaPassword } = req.body;
+  // .trim().toLowerCase() evita errores si el usuario puso un espacio o mayúsculas de más
+  const correoInput = req.body.correo ? req.body.correo.trim().toLowerCase() : null;
+  const { nuevaPassword } = req.body;
 
-  if (!correo || !nuevaPassword) {
+  if (!correoInput || !nuevaPassword) {
     return res.status(400).json({ error: 'Faltan datos obligatorios (correo o nuevaPassword)' });
   }
 
   try {
-    // Actualizamos la contraseña y obtenemos el nombre para el correo personalizado
-    const result = await pool.query(
-      "UPDATE usuarios SET password = crypt($1, gen_salt('bf', 10)) WHERE correo = $2 RETURNING nombre, correo",
-      [nuevaPassword, correo]
-    );
+    // Usamos LOWER(correo) para comparar sin importar si está en mayúsculas en la base de datos
+    const query = `
+      UPDATE usuarios 
+      SET password = crypt($1, gen_salt('bf', 10)) 
+      WHERE LOWER(correo) = $2 
+      RETURNING nombre, correo
+    `;
+    
+    const result = await pool.query(query, [nuevaPassword, correoInput]);
 
     if (result.rows.length > 0) {
       const usuario = result.rows[0];
 
-      // Disparar el envío de correo de forma asíncrona (no bloquea la respuesta al App)
+      // Enviar correo de notificación (No detiene la respuesta)
       enviarCorreoNotificacion(usuario.correo, usuario.nombre, 'reset_password');
 
       res.status(200).json({ 
-        mensaje: 'Contraseña actualizada con éxito. Se ha enviado un correo de confirmación.' 
+        mensaje: 'Contraseña actualizada con éxito' 
       });
     } else {
+      // Si llegamos aquí, es que el correo no existe realmente en la tabla usuarios
       res.status(404).json({ error: 'El correo electrónico no está registrado' });
     }
   } catch (err) {
-    console.error("ERROR RESET PASSWORD:", err.message);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    console.error("❌ ERROR RESET PASSWORD:", err.message);
+    res.status(500).json({ error: 'Error interno del servidor al actualizar' });
   }
 });
 
