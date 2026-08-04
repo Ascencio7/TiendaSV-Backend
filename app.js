@@ -151,6 +151,64 @@ app.post('/login', async (req, res) => {
 });
 
 
+// Login con Google
+app.post('/login/google', async (req, res) => {
+  const { nombre, correo, google_id, foto_perfil } = req.body;
+  
+  try {
+    // Buscar si el usuario ya existe por correo
+    const result = await pool.query(
+      'SELECT usuario_id, nombre, correo, rol, sucursal_id, activo, foto_perfil FROM usuarios WHERE correo = $1',
+      [correo]
+    );
+
+    let usuario;
+
+    if (result.rows.length > 0) {
+      // El usuario ya existe, lo retornamos
+      usuario = result.rows[0];
+      
+      // Opcional: Actualizar el google_id o la foto si han cambiado
+      await pool.query(
+        'UPDATE usuarios SET foto_perfil = COALESCE($1, foto_perfil) WHERE usuario_id = $2',
+        [foto_perfil, usuario.usuario_id]
+      );
+    } else {
+      // Si no existe, lo registramos como 'cliente' por defecto
+      // Generamos una contraseña aleatoria ya que entrará por Google
+      const passwordAleatoria = Math.random().toString(36).slice(-10);
+      
+      const insertRes = await pool.query(
+        `INSERT INTO usuarios (nombre, correo, rol, activo, foto_perfil, password) 
+         VALUES ($1, $2, $3, $4, $5, crypt($6, gen_salt('bf', 10))) 
+         RETURNING usuario_id, nombre, correo, rol, sucursal_id, activo, foto_perfil`,
+        [nombre, correo, 'cliente', true, foto_perfil, passwordAleatoria]
+      );
+      
+      usuario = insertRes.rows[0];
+      usuario.mensaje = "¡Bienvenido! Tu cuenta ha sido creada."; // Esto disparará el email en Android
+    }
+
+    // Enviar la respuesta al Android
+    res.status(200).json({
+      mensaje: usuario.mensaje || 'Bienvenido de nuevo',
+      usuario_id: usuario.usuario_id,
+      nombre: usuario.nombre,
+      correo: usuario.correo,
+      rol: usuario.rol,
+      sucursal_id: usuario.sucursal_id,
+      foto_perfil: usuario.foto_perfil,
+      activo: usuario.activo,
+      token: 'token_google_simulado_abc'
+    });
+
+  } catch (err) {
+    console.error("Error en login Google:", err.message);
+    res.status(500).json({ error: 'Error interno al procesar inicio con Google' });
+  }
+});
+
+
 // Registro de Usuario
 app.post('/usuarios', async (req, res) => {
   const { 
