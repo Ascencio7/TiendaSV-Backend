@@ -401,7 +401,7 @@ app.put('/usuarios/reset-password', async (req, res) => {
       const usuario = result.rows[0];
       
       // Intentamos enviar el correo de forma asíncrona para no bloquear la respuesta
-      await enviarCorreoNotificacion(usuario.correo, usuario.nombre, 'reset_password')
+      enviarCorreoNotificacion(usuario.correo, usuario.nombre, 'reset_password')
         .catch(emailErr => console.error("⚠️ El usuario cambió su clave pero el correo falló:", emailErr));
 
       res.status(200).json({ mensaje: 'Contraseña actualizada con éxito' });
