@@ -61,10 +61,13 @@ const enviarCorreoNotificacion = async (destinatario, nombreUsuario, tipoAccion)
   };
 
   try {
-    await transporter.sendMail(mailOptions);
-    console.log(`✅ Correo enviado con éxito a: ${destinatario}`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log("✅ Correo enviado:", info.messageId);
   } catch (error) {
-    console.error("❌ Error al enviar correo:", error.message);
+    console.error("❌ Error Detallado de Nodemailer:");
+    console.error("Código:", error.code);
+    console.error("Comando:", error.command);
+    console.error("Respuesta:", error.response);
   }
 };
 
