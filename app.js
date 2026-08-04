@@ -385,7 +385,6 @@ app.get('/marcas/autos', async (req, res) => {
 app.put('/usuarios/reset-password', async (req, res) => {
   const { correo, nuevaPassword } = req.body;
 
-  // Limpiamos el correo por si el usuario puso espacios o mayúsculas
   const correoLimpio = correo ? correo.trim().toLowerCase() : null;
 
   if (!correoLimpio || !nuevaPassword) {
@@ -393,7 +392,6 @@ app.put('/usuarios/reset-password', async (req, res) => {
   }
 
   try {
-    // La consulta debe buscar por CORREO y actualizar solo la PASSWORD
     const result = await pool.query(
       "UPDATE usuarios SET password = crypt($1, gen_salt('bf', 10)) WHERE LOWER(correo) = $2 RETURNING nombre, correo",
       [nuevaPassword, correoLimpio]
@@ -402,12 +400,12 @@ app.put('/usuarios/reset-password', async (req, res) => {
     if (result.rows.length > 0) {
       const usuario = result.rows[0];
       
-      // Enviamos el correo (Asegúrate de haber pegado el método enviarCorreoNotificacion que te di antes)
-      enviarCorreoNotificacion(usuario.correo, usuario.nombre, 'reset_password');
+      // Intentamos enviar el correo de forma asíncrona para no bloquear la respuesta
+      enviarCorreoNotificacion(usuario.correo, usuario.nombre, 'reset_password')
+        .catch(emailErr => console.error("⚠️ El usuario cambió su clave pero el correo falló:", emailErr));
 
       res.status(200).json({ mensaje: 'Contraseña actualizada con éxito' });
     } else {
-      // Si entra aquí es porque realmente el correo no existe en la tabla
       res.status(404).json({ error: 'El correo electrónico no está registrado' });
     }
   } catch (err) {
