@@ -338,47 +338,40 @@ app.get('/marcas/autos', async (req, res) => {
 //   }
 // });
 
-// Restablecer Contraseña (CORREGIDO Y SEGURO)
+// Restablecer Contraseña (CORREGIDO PARA QUE FUNCIONE POR CORREO)
 app.put('/usuarios/reset-password', async (req, res) => {
-  // .trim().toLowerCase() evita errores si el usuario puso un espacio o mayúsculas de más
-  const correoInput = req.body.correo ? req.body.correo.trim().toLowerCase() : null;
-  const { nuevaPassword } = req.body;
+  const { correo, nuevaPassword } = req.body;
 
-  if (!correoInput || !nuevaPassword) {
-    return res.status(400).json({ error: 'Faltan datos obligatorios (correo o nuevaPassword)' });
+  // Limpiamos el correo por si el usuario puso espacios o mayúsculas
+  const correoLimpio = correo ? correo.trim().toLowerCase() : null;
+
+  if (!correoLimpio || !nuevaPassword) {
+    return res.status(400).json({ error: 'Faltan datos obligatorios' });
   }
 
   try {
-    // Usamos LOWER(correo) para comparar sin importar si está en mayúsculas en la base de datos
-    const query = `
-      UPDATE usuarios 
-      SET password = crypt($1, gen_salt('bf', 10)) 
-      WHERE LOWER(correo) = $2 
-      RETURNING nombre, correo
-    `;
-    
-    const result = await pool.query(query, [nuevaPassword, correoInput]);
+    // La consulta debe buscar por CORREO y actualizar solo la PASSWORD
+    const result = await pool.query(
+      "UPDATE usuarios SET password = crypt($1, gen_salt('bf', 10)) WHERE LOWER(correo) = $2 RETURNING nombre, correo",
+      [nuevaPassword, correoLimpio]
+    );
 
     if (result.rows.length > 0) {
       const usuario = result.rows[0];
-
-      // Enviar correo de notificación (No detiene la respuesta)
+      
+      // Enviamos el correo (Asegúrate de haber pegado el método enviarCorreoNotificacion que te di antes)
       enviarCorreoNotificacion(usuario.correo, usuario.nombre, 'reset_password');
 
-      res.status(200).json({ 
-        mensaje: 'Contraseña actualizada con éxito' 
-      });
+      res.status(200).json({ mensaje: 'Contraseña actualizada con éxito' });
     } else {
-      // Si llegamos aquí, es que el correo no existe realmente en la tabla usuarios
+      // Si entra aquí es porque realmente el correo no existe en la tabla
       res.status(404).json({ error: 'El correo electrónico no está registrado' });
     }
   } catch (err) {
-    console.error("❌ ERROR RESET PASSWORD:", err.message);
-    res.status(500).json({ error: 'Error interno del servidor al actualizar' });
+    console.error("❌ ERROR AL ACTUALIZAR:", err.message);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
-
-
 
 
 // VENDEDORES
