@@ -79,29 +79,26 @@ app.post('/chat/asistente', async (req, res) => {
   const { mensaje, rol, nombre } = req.body;
 
   try {
-    // Definimos el contexto según el rol que viene de la App
+    // Usamos el modelo "gemini-1.5-flash" (o "gemini-pro" si sigue fallando)
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    // Definimos el contexto
     let contextoEspecifico = "";
     if (rol === 'vendedor') {
-      contextoEspecifico = "Eres experto en gestión de inventarios, ventas y atención al cliente para vendedores.";
+      contextoEspecifico = "Eres experto en gestión de inventarios y ventas.";
     } else if (rol === 'repartidor') {
-      contextoEspecifico = "Eres experto en logística, rutas de El Salvador y estados de entrega para repartidores.";
+      contextoEspecifico = "Eres experto en rutas y logística en El Salvador.";
     } else {
-      contextoEspecifico = "Eres un asistente de compras que ayuda a clientes a encontrar productos y ver sus pedidos.";
+      contextoEspecifico = "Eres un asistente de compras para clientes.";
     }
 
-    const promptSistema = `Eres el asistente oficial de TiendaSV en El Salvador. 
-    Tu nombre es SV-Bot. Estás hablando con ${nombre}, que tiene el rol de ${rol}.
-    ${contextoEspecifico}
-    Responde de forma amable, breve y siempre en español.`;
+    const promptSistema = `INSTRUCCIÓN DE SISTEMA: Eres SV-Bot, el asistente de TiendaSV. 
+    Usuario: ${nombre} | Rol: ${rol}. ${contextoEspecifico}
+    Responde breve y en español.\n\n`;
 
-    // Inicializamos el modelo pasando el contexto como systemInstruction
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      systemInstruction: promptSistema 
-    });
-
-    // Generamos la respuesta directamente
-    const result = await model.generateContent(mensaje);
+    // Enviamos el mensaje combinando el contexto y la duda del usuario
+    // Esta forma es la más compatible con versiones antiguas y nuevas de la librería
+    const result = await model.generateContent(promptSistema + "Pregunta del usuario: " + mensaje);
     const response = await result.response;
     const texto = response.text();
 
@@ -109,7 +106,6 @@ app.post('/chat/asistente', async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error en Gemini:", error);
-    // Enviamos el error detallado para que sepas qué falla en la consola de Render
     res.status(500).json({ error: "Error al procesar la IA", detalle: error.message });
   }
 });
