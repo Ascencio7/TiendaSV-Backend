@@ -78,24 +78,31 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 app.post('/chat/asistente', async (req, res) => {
   const { mensaje, rol, nombre } = req.body;
 
+  // Debug: Verificamos si la llave está llegando al código (borrar después)
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("❌ ERROR: La variable GEMINI_API_KEY está vacía en Render");
+    return res.status(500).json({ error: "Configuración incompleta en el servidor" });
+  }
+
   try {
-    // CAMBIO CLAVE: Usamos "gemini-pro" que es el modelo más compatible
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    // Usamos el nombre técnico exacto del modelo
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    const promptSistema = `Eres SV-Bot, el asistente de la app TiendaSV en El Salvador.
-    Estás hablando con ${nombre}, quien es ${rol}.
-    Responde de forma breve, amable y en español.
-    Pregunta: ${mensaje}`;
+    const prompt = `Actúa como SV-Bot de TiendaSV. Usuario: ${nombre} (${rol}). Pregunta: ${mensaje}`;
 
-    const result = await model.generateContent(promptSistema);
+    const result = await model.generateContent(prompt);
     const response = await result.response;
     const texto = response.text();
 
     res.json({ respuesta: texto });
 
   } catch (error) {
-    console.error("❌ Error en Gemini:", error);
-    res.status(500).json({ error: "Error al procesar la IA", detalle: error.message });
+    console.error("❌ Error Detallado:", error);
+    // Si el error dice 404 de nuevo, es 100% la API KEY
+    res.status(500).json({ 
+      error: "Error de IA", 
+      detalle: error.message 
+    });
   }
 });
 
