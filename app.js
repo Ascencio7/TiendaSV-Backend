@@ -2,6 +2,7 @@ import express from 'express';
 import pkg from 'pg';
 import cors from 'cors';
 import dotenv from 'dotenv';
+
 import nodemailer from 'nodemailer';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -16,11 +17,13 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+
 // Conexión a Supabase
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+
 
 // Prueba de conexion a supabase
 pool.connect()
@@ -31,7 +34,7 @@ pool.connect()
   .catch(err => console.error("❌ Error conectando a Supabase:", err));
 
 
-// CONFIGURACIÓN DE NODEMAILER (Cópialo después de crear el 'app')
+// CONFIGURACIÓN DE NODEMAILER
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
@@ -41,6 +44,7 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 });
+
 
 // MÉTODO PARA ENVIAR CORREOS
 const enviarCorreoNotificacion = async (destinatario, nombreUsuario, tipoAccion) => {
@@ -71,13 +75,14 @@ const enviarCorreoNotificacion = async (destinatario, nombreUsuario, tipoAccion)
 };
 
 
+
+// ENDPOINT DE CHAT ASISTENTE
 // Inicializar Gemini con tu API KEY de las variables de entorno
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// ENDPOINT DE CHAT ASISTENTE
 app.post('/chat/asistente', async (req, res) => {
   const { mensaje, rol, nombre } = req.body;
-  console.log("--- NUEVA PETICIÓN DE CHAT ---"); // Esto saldrá en los logs de Render
+  console.log("NUEVA PETICIÓN DE CHAT"); // Esto saldrá en los logs de Render
   
   try {
     // Usamos el modelo 'gemini-pro' que es el más estable
@@ -94,6 +99,7 @@ app.post('/chat/asistente', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 
  // Endpoints de TiendaSV - Jonathan Vladimir Ascencio Ramos 
