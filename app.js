@@ -79,26 +79,15 @@ app.post('/chat/asistente', async (req, res) => {
   const { mensaje, rol, nombre } = req.body;
 
   try {
-    // Usamos el modelo "gemini-1.5-flash" (o "gemini-pro" si sigue fallando)
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // CAMBIO CLAVE: Usamos "gemini-pro" que es el modelo más compatible
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-    // Definimos el contexto
-    let contextoEspecifico = "";
-    if (rol === 'vendedor') {
-      contextoEspecifico = "Eres experto en gestión de inventarios y ventas.";
-    } else if (rol === 'repartidor') {
-      contextoEspecifico = "Eres experto en rutas y logística en El Salvador.";
-    } else {
-      contextoEspecifico = "Eres un asistente de compras para clientes.";
-    }
+    const promptSistema = `Eres SV-Bot, el asistente de la app TiendaSV en El Salvador.
+    Estás hablando con ${nombre}, quien es ${rol}.
+    Responde de forma breve, amable y en español.
+    Pregunta: ${mensaje}`;
 
-    const promptSistema = `INSTRUCCIÓN DE SISTEMA: Eres SV-Bot, el asistente de TiendaSV. 
-    Usuario: ${nombre} | Rol: ${rol}. ${contextoEspecifico}
-    Responde breve y en español.\n\n`;
-
-    // Enviamos el mensaje combinando el contexto y la duda del usuario
-    // Esta forma es la más compatible con versiones antiguas y nuevas de la librería
-    const result = await model.generateContent(promptSistema + "Pregunta del usuario: " + mensaje);
+    const result = await model.generateContent(promptSistema);
     const response = await result.response;
     const texto = response.text();
 
