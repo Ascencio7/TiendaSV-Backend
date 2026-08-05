@@ -77,32 +77,20 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // ENDPOINT DE CHAT ASISTENTE
 app.post('/chat/asistente', async (req, res) => {
   const { mensaje, rol, nombre } = req.body;
-
+  console.log("--- NUEVA PETICIÓN DE CHAT ---"); // Esto saldrá en los logs de Render
+  
   try {
-    // 2. Usamos el modelo con su nombre técnico completo y la versión v1
-    const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
-        apiVersion: 'v1' // <--- ESTO ES VITAL
-    });
+    // Usamos el modelo 'gemini-pro' que es el más estable
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-    const prompt = `Eres SV-Bot de TiendaSV. Hablas con ${nombre} (${rol}). Pregunta: ${mensaje}`;
+    const prompt = `Responde como SV-Bot de TiendaSV. Usuario: ${nombre} (${rol}). Pregunta: ${mensaje}`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    
     res.json({ respuesta: response.text() });
 
   } catch (error) {
-    console.error("❌ ERROR:", error.message);
-    
-    // Si sigue fallando, intentamos con el modelo más básico del mundo
-    if (error.message.includes("404")) {
-        return res.status(500).json({ 
-            error: "Modelo no encontrado", 
-            ayuda: "Revisa si tu API KEY es de Google AI Studio y no de Cloud Console."
-        });
-    }
-    
+    console.error("❌ ERROR EN EL CÓDIGO NUEVO:", error.message);
     res.status(500).json({ error: error.message });
   }
 });
