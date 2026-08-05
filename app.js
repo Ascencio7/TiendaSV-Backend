@@ -2,7 +2,8 @@ import express from 'express';
 import pkg from 'pg';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import nodemailer from 'nodemailer'; // <--- AGREGAR ESTO
+import nodemailer from 'nodemailer';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 
 dotenv.config();
@@ -28,8 +29,6 @@ pool.connect()
     client.release();
   })
   .catch(err => console.error("❌ Error conectando a Supabase:", err));
-
-
 
 
 // CONFIGURACIÓN DE NODEMAILER (Cópialo después de crear el 'app')
@@ -70,6 +69,51 @@ const enviarCorreoNotificacion = async (destinatario, nombreUsuario, tipoAccion)
     console.error("Respuesta:", error.response);
   }
 };
+
+
+// Inicializar Gemini con tu API KEY de las variables de entorno
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// ENDPOINT DE CHAT ASISTENTE
+app.post('/chat/asistente', async (req, res) => {
+  const { mensaje, rol, nombre } = req.body;
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    // Definimos el contexto según el rol que viene de la App
+    let contextoEspecifico = "";
+    if (rol === 'vendedor') {
+      contextoEspecifico = "Eres experto en gestión de inventarios, ventas y atención al cliente para vendedores.";
+    } else if (rol === 'repartidor') {
+      contextoEspecifico = "Eres experto en logística, rutas de El Salvador y estados de entrega para repartidores.";
+    } else {
+      contextoEspecifico = "Eres un asistente de compras que ayuda a clientes a encontrar productos y ver sus pedidos.";
+    }
+
+    const promptSistema = `Eres el asistente oficial de TiendaSV en El Salvador. 
+    Tu nombre es SV-Bot. Estás hablando con ${nombre}, que tiene el rol de ${rol}.
+    ${contextoEspecifico}
+    Responde de forma amable, breve y siempre en español.`;
+
+    // Iniciamos el chat con la instrucción de sistema
+    const chat = model.startChat({
+      history: [
+        { role: "user", parts: [{ text: "Hola, ¿quién eres?" }] },
+        { role: "model", parts: [{ text: promptSistema }] },
+      ],
+    });
+
+    const result = await chat.sendMessage(mensaje);
+    const response = await result.response;
+    const texto = response.text();
+
+    res.json({ respuesta: texto });
+  } catch (error) {
+    console.error("Error en Gemini:", error);
+    res.status(500).json({ error: "Error al procesar tu duda con la IA" });
+  }
+});
 
 
  // Endpoints de TiendaSV - Jonathan Vladimir Ascencio Ramos 
