@@ -79,8 +79,6 @@ app.post('/chat/asistente', async (req, res) => {
   const { mensaje, rol, nombre } = req.body;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
     // Definimos el contexto según el rol que viene de la App
     let contextoEspecifico = "";
     if (rol === 'vendedor') {
@@ -96,22 +94,23 @@ app.post('/chat/asistente', async (req, res) => {
     ${contextoEspecifico}
     Responde de forma amable, breve y siempre en español.`;
 
-    // Iniciamos el chat con la instrucción de sistema
-    const chat = model.startChat({
-      history: [
-        { role: "user", parts: [{ text: "Hola, ¿quién eres?" }] },
-        { role: "model", parts: [{ text: promptSistema }] },
-      ],
+    // Inicializamos el modelo pasando el contexto como systemInstruction
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      systemInstruction: promptSistema 
     });
 
-    const result = await chat.sendMessage(mensaje);
+    // Generamos la respuesta directamente
+    const result = await model.generateContent(mensaje);
     const response = await result.response;
     const texto = response.text();
 
     res.json({ respuesta: texto });
+
   } catch (error) {
-    console.error("Error en Gemini:", error);
-    res.status(500).json({ error: "Error al procesar tu duda con la IA" });
+    console.error("❌ Error en Gemini:", error);
+    // Enviamos el error detallado para que sepas qué falla en la consola de Render
+    res.status(500).json({ error: "Error al procesar la IA", detalle: error.message });
   }
 });
 
