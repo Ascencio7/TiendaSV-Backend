@@ -1131,6 +1131,19 @@ app.put('/admin/solicitudes-activacion/:id', async (req, res) => {
 });
 
 
+// Eliminar un comentario por el Administrador (Borrado lógico)
+app.delete('/admin/comentarios/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Marcamos como inactivo para que el cliente vea que fue eliminado por moderación
+    await pool.query('UPDATE comentarios SET activo = false WHERE comentario_id = $1', [id]);
+    res.status(200).json({ mensaje: 'Comentario eliminado por el administrador' });
+  } catch (err) {
+    console.error("ERROR AL ELIMINAR COMENTARIO:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // PRODUCTOS
 
