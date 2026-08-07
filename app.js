@@ -177,19 +177,28 @@ app.get('/municipios', async (req, res) => {
 });
 
 
-// Comentarios de los clientes de la tienda por su compra realizada
+// Método JS para que el cliente deje comentarios (Añádelo a tu servidor)
 app.post('/comentarios', async (req, res) => {
   const { sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id } = req.body;
+  
+  if (!texto || !calificacion || !movimiento_id) {
+    return res.status(400).json({ error: 'Faltan datos (texto, calificación o ID de movimiento)' });
+  }
+
   try {
-    await pool.query(
-      `INSERT INTO comentarios (sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id) 
-       VALUES ($1, $2, $3, $4, $5, $6)
+    const result = await pool.query(
+      `INSERT INTO comentarios (sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id, activo) 
+       VALUES ($1, $2, $3, $4, $5, $6, true)
        ON CONFLICT (movimiento_id) 
-       DO UPDATE SET texto = EXCLUDED.texto, calificacion = EXCLUDED.calificacion, fecha = NOW()`,
+       DO UPDATE SET texto = EXCLUDED.texto, calificacion = EXCLUDED.calificacion, fecha = NOW()
+       RETURNING *`,
       [sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id]
     );
-    res.status(201).json({ mensaje: 'Comentario guardado' });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    res.status(201).json({ mensaje: 'Comentario guardado exitosamente', data: result.rows[0] });
+  } catch (err) {
+    console.error("ERROR AL GUARDAR COMENTARIO:", err.message);
+    res.status(500).json({ error: 'Error interno al guardar el comentario' });
+  }
 });
 
 
