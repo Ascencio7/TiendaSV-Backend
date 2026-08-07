@@ -694,6 +694,7 @@ app.get('/admin/comentarios', async (req, res) => {
     let query = `
       SELECT c.*, 
              u.nombre as cliente_nombre, 
+             u.foto_perfil as cliente_foto, -- <--- NUEVO CAMPO
              s.nombre as sucursal_nombre, 
              p.nombre as producto_nombre,
              (SELECT nombre FROM usuarios WHERE sucursal_id = COALESCE(c.sucursal_id, p.sucursal_id) AND rol = 'vendedor' LIMIT 1) as responsable_nombre
