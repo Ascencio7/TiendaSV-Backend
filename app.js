@@ -694,7 +694,7 @@ app.get('/admin/comentarios', async (req, res) => {
     let query = `
       SELECT c.*, 
              u.nombre as cliente_nombre, 
-             u.foto_perfil as cliente_foto, -- <--- NUEVO CAMPO
+             u.foto_perfil as cliente_foto,
              s.nombre as sucursal_nombre, 
              p.nombre as producto_nombre,
              (SELECT nombre FROM usuarios WHERE sucursal_id = COALESCE(c.sucursal_id, p.sucursal_id) AND rol = 'vendedor' LIMIT 1) as responsable_nombre
@@ -773,27 +773,26 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
   const { activo, rol, usuario_id } = req.query;
   try {
     let query = `
-      SELECT 
-        u.*, 
-        s.nombre as nombre_tienda, 
-        s.direccion as direccion_tienda, 
-        s.departamento as departamento_tienda, 
-        s.municipio as municipio_tienda,
-        s.latitud, s.longitud
+      SELECT u.*, s.nombre as nombre_tienda 
       FROM usuarios u
       LEFT JOIN sucursales s ON u.sucursal_id = s.sucursal_id
       WHERE 1=1
     `;
     let params = [];
 
+    // LÓGICA DE EXCLUSIÓN: Si no se pide un rol específico, ocultamos a los admins
+    if (!rol || rol === 'Todos') {
+      query += ` AND u.rol != 'admin'`;
+    } else {
+      params.push(rol.toLowerCase());
+      query += ` AND u.rol = $${params.length}`;
+    }
+
     if (activo !== undefined && activo !== '') {
       params.push(activo === 'true');
       query += ` AND u.activo = $${params.length}`;
     }
-    if (rol && rol !== 'Todos') {
-      params.push(rol.toLowerCase());
-      query += ` AND u.rol = $${params.length}`;
-    }
+    
     if (usuario_id && usuario_id !== '0') {
       params.push(usuario_id);
       query += ` AND u.usuario_id = $${params.length}`;
