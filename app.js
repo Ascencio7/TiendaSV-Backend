@@ -685,7 +685,6 @@ app.get('/admin/comentarios', async (req, res) => {
              u.nombre as cliente_nombre, 
              s.nombre as sucursal_nombre, 
              p.nombre as producto_nombre,
-             p.sucursal_id as producto_sucursal_id,
              (SELECT nombre FROM usuarios WHERE sucursal_id = COALESCE(c.sucursal_id, p.sucursal_id) AND rol = 'vendedor' LIMIT 1) as responsable_nombre
       FROM comentarios c
       LEFT JOIN usuarios u ON c.usuario_id = u.usuario_id
@@ -694,20 +693,14 @@ app.get('/admin/comentarios', async (req, res) => {
     `;
     
     let params = [];
-    // Filtro inteligente: busca comentarios vinculados directamente o a través del producto de la tienda
     if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0') {
       params.push(sucursal_id);
       query += ` WHERE (c.sucursal_id = $1 OR p.sucursal_id = $1)`;
     }
-
     query += ` ORDER BY c.fecha DESC`;
-    
     const result = await pool.query(query, params);
     res.json(result.rows);
-  } catch (err) {
-    console.error("ERROR COMMENTS:", err.message);
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 
