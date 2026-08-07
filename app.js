@@ -678,25 +678,26 @@ app.post('/admin/crear-admin', async (req, res) => {
 
 // Comentarios de los clientes de la tienda y sus productos comprados
 app.get('/admin/comentarios', async (req, res) => {
-  const { sucursal_id } = req.query; // Capturamos el filtro enviado por la App
+  const { sucursal_id } = req.query; 
   try {
     let query = `
       SELECT c.*, 
              u.nombre as cliente_nombre, 
              s.nombre as sucursal_nombre, 
              p.nombre as producto_nombre,
-             (SELECT nombre FROM usuarios WHERE sucursal_id = s.sucursal_id AND rol = 'vendedor' LIMIT 1) as responsable_nombre
+             p.sucursal_id as producto_sucursal_id,
+             (SELECT nombre FROM usuarios WHERE sucursal_id = COALESCE(c.sucursal_id, p.sucursal_id) AND rol = 'vendedor' LIMIT 1) as responsable_nombre
       FROM comentarios c
-      JOIN usuarios u ON c.usuario_id = u.usuario_id
-      JOIN sucursales s ON c.sucursal_id = s.sucursal_id
+      LEFT JOIN usuarios u ON c.usuario_id = u.usuario_id
+      LEFT JOIN sucursales s ON c.sucursal_id = s.sucursal_id
       LEFT JOIN productos p ON c.producto_id = p.producto_id
     `;
     
     let params = [];
-    // Solo mostramos comentarios de la tienda seleccionada
+    // Filtro inteligente: busca comentarios vinculados directamente o a través del producto de la tienda
     if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0') {
       params.push(sucursal_id);
-      query += ` WHERE c.sucursal_id = $1`;
+      query += ` WHERE (c.sucursal_id = $1 OR p.sucursal_id = $1)`;
     }
 
     query += ` ORDER BY c.fecha DESC`;
