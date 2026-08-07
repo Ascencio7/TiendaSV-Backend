@@ -177,12 +177,13 @@ app.get('/municipios', async (req, res) => {
 });
 
 
-// Método JS para que el cliente deje comentarios (Añádelo a tu servidor)
+// Método JS robusto para comentarios
 app.post('/comentarios', async (req, res) => {
   const { sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id } = req.body;
   
-  if (!texto || !calificacion || !movimiento_id) {
-    return res.status(400).json({ error: 'Faltan datos (texto, calificación o ID de movimiento)' });
+  // Validamos que los datos esenciales no sean nulos ni 0
+  if (!texto || !calificacion || !movimiento_id || !usuario_id || !producto_id) {
+    return res.status(400).json({ error: 'Faltan datos obligatorios para el comentario' });
   }
 
   try {
@@ -190,14 +191,15 @@ app.post('/comentarios', async (req, res) => {
       `INSERT INTO comentarios (sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id, activo) 
        VALUES ($1, $2, $3, $4, $5, $6, true)
        ON CONFLICT (movimiento_id) 
-       DO UPDATE SET texto = EXCLUDED.texto, calificacion = EXCLUDED.calificacion, fecha = NOW()
+       DO UPDATE SET texto = EXCLUDED.texto, calificacion = EXCLUDED.calificacion, fecha = NOW(), activo = true
        RETURNING *`,
-      [sucursal_id, usuario_id, producto_id, texto, calificacion, movimiento_id]
+      [sucursal_id || null, usuario_id, producto_id, texto, calificacion, movimiento_id]
     );
-    res.status(201).json({ mensaje: 'Comentario guardado exitosamente', data: result.rows[0] });
+    res.status(201).json({ mensaje: 'Comentario guardado', data: result.rows[0] });
   } catch (err) {
-    console.error("ERROR AL GUARDAR COMENTARIO:", err.message);
-    res.status(500).json({ error: 'Error interno al guardar el comentario' });
+    console.error("ERROR DB COMENTARIO:", err.message);
+    // Devolvemos el mensaje real para que puedas verlo en el Toast de la App
+    res.status(500).json({ error: err.message }); 
   }
 });
 
