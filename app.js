@@ -1285,6 +1285,7 @@ app.get('/ventas/historial', async (req, res) => {
       SELECT 
         m.compra_id as movimiento_id_str,
         MAX(m.movimiento_id) as movimiento_id,
+        MAX(p.producto_id) as producto_id,
         MAX(p.sucursal_id) as sucursal_id,
         STRING_AGG(p.nombre || ' (x' || m.cantidad || ')', ', ') as producto_nombre,
         SUM(m.cantidad) as cantidad,
