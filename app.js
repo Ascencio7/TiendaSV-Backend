@@ -1170,27 +1170,36 @@ app.post('/soporte', async (req, res) => {
   }
 });
 
-/**
- * 2. OBTENER MENSAJES (Admin)
- */
+// OBTENER MENSAJES PARA EL ADMIN (Corregido con respuesta_admin)
 app.get('/admin/soporte', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT s.soporte_id, s.mensaje, s.usuario_id, s.estado,
+      SELECT s.soporte_id, s.mensaje, s.usuario_id, s.estado, s.respuesta_admin,
              u.nombre as usuario_nombre, u.correo as usuario_correo, 
              u.rol as usuario_rol, u.foto_perfil,
              TO_CHAR(s.fecha AT TIME ZONE 'America/El_Salvador', 'DD/MM/YYYY HH12:MI AM') as fecha
       FROM soporte s
       JOIN usuarios u ON s.usuario_id = u.usuario_id
       WHERE u.rol != 'admin'
-      ORDER BY 
-        CASE 
-          WHEN s.estado = 'pendiente' THEN 1 
-          WHEN s.estado = 'recibida' THEN 2
-          ELSE 3 
-        END, 
-        s.fecha DESC
+      ORDER BY s.fecha DESC
     `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message.toUpperCase() });
+  }
+});
+
+// NUEVO: OBTENER PETICIONES DE UN USUARIO ESPECÍFICO (Para el cliente)
+app.get('/soporte/mis-mensajes/:usuario_id', async (req, res) => {
+  const { usuario_id } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT soporte_id, mensaje, estado, respuesta_admin,
+             TO_CHAR(fecha AT TIME ZONE 'America/El_Salvador', 'DD/MM/YYYY HH12:MI AM') as fecha
+      FROM soporte 
+      WHERE usuario_id = $1
+      ORDER BY fecha DESC
+    `, [usuario_id]);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message.toUpperCase() });
