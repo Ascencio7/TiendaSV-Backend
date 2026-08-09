@@ -1513,11 +1513,13 @@ app.get('/ventas/:id/seguimiento', async (req, res) => {
   try {
     const query = `
       SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
+             u_cli.nombre as usuario_nombre,
              u_rep.nombre as repartidor_nombre, u_rep.telefono as repartidor_telefono, 
              u_rep.correo as repartidor_correo, u_rep.foto_perfil as repartidor_foto, 
              u_rep.tipo_transporte
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
+      LEFT JOIN usuarios u_cli ON m.usuario_id = u_cli.usuario_id
       LEFT JOIN usuarios u_rep ON m.repartidor_id = u_rep.usuario_id
       WHERE m.movimiento_id = $1
     `;
