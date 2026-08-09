@@ -1149,6 +1149,24 @@ app.delete('/admin/comentarios/:id', async (req, res) => {
   }
 });
 
+// Obtener mensajes de soporte (Admin) - CORREGIDO
+app.get('/admin/soporte', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT s.soporte_id, s.mensaje, s.usuario_id, s.estado,
+              u.nombre as usuario_nombre, u.correo as usuario_correo, 
+              u.rol as usuario_rol, u.foto_perfil,
+              TO_CHAR(s.fecha, 'DD/MM/YYYY HH:MI AM') as fecha
+       FROM soporte s
+       JOIN usuarios u ON s.usuario_id = u.usuario_id
+       ORDER BY s.fecha DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // PRODUCTOS
 
