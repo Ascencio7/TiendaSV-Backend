@@ -601,16 +601,24 @@ app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
   }
 });
 
-// Actualizar estado de todo un grupo (Combo) por compra_id
+// Actualizar estado de todo un grupo (Combo) de forma atómica
 app.put('/repartidor/pedidos/grupo/:compra_id/estado', async (req, res) => {
   const { compra_id } = req.params;
-  const { estado_entrega } = req.body;
+  const { estado_entrega, repartidor_id } = req.body;
+  
   try {
-    await pool.query(
-      "UPDATE movimientos SET estado_entrega = $1 WHERE compra_id = $2",
-      [estado_entrega, compra_id]
-    );
-    res.status(200).json({ mensaje: 'ENTREGA DE COMBO FINALIZADA' });
+    let query = "UPDATE movimientos SET estado_entrega = $1";
+    let params = [estado_entrega, compra_id];
+
+    if (repartidor_id) {
+      query += ", repartidor_id = $3 WHERE compra_id = $2";
+      params.push(repartidor_id);
+    } else {
+      query += " WHERE compra_id = $2";
+    }
+
+    await pool.query(query, params);
+    res.status(200).json({ mensaje: 'ESTADO DEL COMBO ACTUALIZADO' });
   } catch (err) {
     res.status(500).json({ error: err.message.toUpperCase() });
   }
