@@ -1151,15 +1151,15 @@ app.delete('/admin/comentarios/:id', async (req, res) => {
 
 // --- SISTEMA DE SOPORTE TÉCNICO ---
 
-// 1. Enviar mensaje de soporte - CORREGIDO
+// 1. Enviar mensaje de soporte - SIMPLIFICADO
 app.post('/soporte', async (req, res) => {
   const { usuario_id, mensaje } = req.body;
   if (!usuario_id || !mensaje) return res.status(400).json({ error: 'Faltan datos' });
 
   try {
-    // Insertamos usando la hora de El Salvador directamente
+    // Insertamos normal, la DB se encarga del DEFAULT CURRENT_TIMESTAMP
     await pool.query(
-      "INSERT INTO soporte (usuario_id, mensaje, fecha) VALUES ($1, $2, timezone('CST', now()))",
+      "INSERT INTO soporte (usuario_id, mensaje) VALUES ($1, $2)",
       [usuario_id, mensaje]
     );
     res.status(201).json({ mensaje: 'Mensaje enviado con éxito' });
@@ -1168,15 +1168,15 @@ app.post('/soporte', async (req, res) => {
   }
 });
 
-// 2. Obtener mensajes (Admin) - CORREGIDO
+// 2. Obtener mensajes (Admin) - CONVERTIDO A EL SALVADOR
 app.get('/admin/soporte', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT s.soporte_id, s.mensaje, s.usuario_id, s.estado,
              u.nombre as usuario_nombre, u.correo as usuario_correo, 
              u.rol as usuario_rol, u.foto_perfil,
-             -- Usamos AT TIME ZONE para forzar la visualización en CST (El Salvador)
-             TO_CHAR(s.fecha AT TIME ZONE 'CST', 'DD/MM/YYYY HH12:MI AM') as fecha
+             -- Convertimos de UTC a la hora exacta de El Salvador para mostrar
+             TO_CHAR(s.fecha AT TIME ZONE 'UTC' AT TIME ZONE 'America/El_Salvador', 'DD/MM/YYYY HH12:MI AM') as fecha
       FROM soporte s
       JOIN usuarios u ON s.usuario_id = u.usuario_id
       WHERE u.rol != 'admin'
