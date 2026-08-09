@@ -1175,15 +1175,16 @@ app.get('/admin/soporte', async (req, res) => {
       SELECT s.soporte_id, s.mensaje, s.usuario_id, s.estado,
              u.nombre as usuario_nombre, u.correo as usuario_correo, 
              u.rol as usuario_rol, u.foto_perfil,
-             TO_CHAR(s.fecha, 'DD/MM/YYYY HH12:MI AM') as fecha
+             -- Usamos AT TIME ZONE para forzar la visualización en CST (El Salvador)
+             TO_CHAR(s.fecha AT TIME ZONE 'CST', 'DD/MM/YYYY HH12:MI AM') as fecha
       FROM soporte s
       JOIN usuarios u ON s.usuario_id = u.usuario_id
-      WHERE u.rol != 'admin' -- Excluir administradores
+      WHERE u.rol != 'admin'
       ORDER BY s.fecha DESC
     `);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener mensajes' });
+    res.status(500).json({ error: err.message });
   }
 });
 
