@@ -1149,42 +1149,77 @@ app.delete('/admin/comentarios/:id', async (req, res) => {
   }
 });
 
-// --- SISTEMA DE SOPORTE TÉCNICO ---
 
-// 1. Enviar mensaje de soporte - SIMPLIFICADO
+// --- SISTEMA DE SOPORTE TÉCNICO (FULL) ---
+
+/**
+ * 1. ENVIAR MENSAJE (Usuario)
+ */
 app.post('/soporte', async (req, res) => {
   const { usuario_id, mensaje } = req.body;
   if (!usuario_id || !mensaje) return res.status(400).json({ error: 'Faltan datos' });
 
   try {
-    // Insertamos normal, la DB se encarga del DEFAULT CURRENT_TIMESTAMP
     await pool.query(
-      "INSERT INTO soporte (usuario_id, mensaje) VALUES ($1, $2)",
+      "INSERT INTO soporte (usuario_id, mensaje, estado) VALUES ($1, $2, 'pendiente')",
       [usuario_id, mensaje]
     );
-    res.status(201).json({ mensaje: 'Mensaje enviado con éxito' });
+    res.status(201).json({ mensaje: 'PETICIÓN ENVIADA CON ÉXITO' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message.toUpperCase() });
   }
 });
 
-// 2. Obtener mensajes (Admin) - CONVERTIDO A EL SALVADOR
+/**
+ * 2. OBTENER MENSAJES (Admin)
+ */
 app.get('/admin/soporte', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT s.soporte_id, s.mensaje, s.usuario_id, s.estado,
              u.nombre as usuario_nombre, u.correo as usuario_correo, 
              u.rol as usuario_rol, u.foto_perfil,
-             -- Convertimos directamente a la zona de El Salvador y formateamos
              TO_CHAR(s.fecha AT TIME ZONE 'America/El_Salvador', 'DD/MM/YYYY HH12:MI AM') as fecha
       FROM soporte s
       JOIN usuarios u ON s.usuario_id = u.usuario_id
       WHERE u.rol != 'admin'
-      ORDER BY s.fecha DESC
+      ORDER BY 
+        CASE 
+          WHEN s.estado = 'pendiente' THEN 1 
+          WHEN s.estado = 'recibida' THEN 2
+          ELSE 3 
+        END, 
+        s.fecha DESC
     `);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message.toUpperCase() });
+  }
+});
+
+/**
+ * 3. ACTUALIZAR ESTADO (Admin)
+ * Maneja: 'recibida', 'solucionada', 'cancelada'
+ */
+app.put('/admin/soporte/:id', async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body; // Llega en minúsculas desde el body
+
+  if (!estado) return res.status(400).json({ error: 'EL ESTADO ES REQUERIDO' });
+
+  try {
+    const result = await pool.query(
+      "UPDATE soporte SET estado = $1 WHERE soporte_id = $2 RETURNING *",
+      [estado.toLowerCase(), id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'PETICIÓN NO ENCONTRADA' });
+    }
+
+    res.json({ mensaje: 'ESTADO ACTUALIZADO A ' + estado.toUpperCase() });
+  } catch (err) {
+    res.status(500).json({ error: err.message.toUpperCase() });
   }
 });
 
