@@ -601,6 +601,21 @@ app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
   }
 });
 
+// Actualizar estado de todo un grupo (Combo) por compra_id
+app.put('/repartidor/pedidos/grupo/:compra_id/estado', async (req, res) => {
+  const { compra_id } = req.params;
+  const { estado_entrega } = req.body;
+  try {
+    await pool.query(
+      "UPDATE movimientos SET estado_entrega = $1 WHERE compra_id = $2",
+      [estado_entrega, compra_id]
+    );
+    res.status(200).json({ mensaje: 'ENTREGA DE COMBO FINALIZADA' });
+  } catch (err) {
+    res.status(500).json({ error: err.message.toUpperCase() });
+  }
+});
+
 
 // Enviar solicitud de unión a una tienda activa
 app.post('/repartidor/solicitar', async (req, res) => {
