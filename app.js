@@ -1172,14 +1172,15 @@ app.post('/soporte', async (req, res) => {
   }
 });
 
-// 2. Obtener todos los mensajes de soporte (Solo para el Administrador)
+
+// Obtener todos los mensajes de soporte (Solo para el Administrador) - CORREGIDO
 app.get('/admin/soporte', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT s.soporte_id, s.mensaje, s.usuario_id, s.estado,
              u.nombre as usuario_nombre, u.correo as usuario_correo, 
              u.rol as usuario_rol, u.foto_perfil,
-             TO_CHAR(s.fecha, 'DD/MM/YYYY HH:MI AM') as fecha
+             TO_CHAR(s.fecha AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'DD/MM/YYYY HH12:MI AM') as fecha
       FROM soporte s
       JOIN usuarios u ON s.usuario_id = u.usuario_id
       ORDER BY s.fecha DESC
