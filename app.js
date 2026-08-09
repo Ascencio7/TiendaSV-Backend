@@ -1203,25 +1203,27 @@ app.get('/admin/soporte', async (req, res) => {
  */
 app.put('/admin/soporte/:id', async (req, res) => {
   const { id } = req.params;
-  const { estado } = req.body; // Llega en minúsculas desde el body
-
-  if (!estado) return res.status(400).json({ error: 'EL ESTADO ES REQUERIDO' });
+  const { estado, respuesta_admin } = req.body; // Ahora recibe la respuesta también
 
   try {
-    const result = await pool.query(
-      "UPDATE soporte SET estado = $1 WHERE soporte_id = $2 RETURNING *",
-      [estado.toLowerCase(), id]
-    );
+    const query = `
+      UPDATE soporte 
+      SET estado = $1, respuesta_admin = $2 
+      WHERE soporte_id = $3 
+      RETURNING *
+    `;
+    const result = await pool.query(query, [estado.toLowerCase(), respuesta_admin, id]);
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'PETICIÓN NO ENCONTRADA' });
     }
 
-    res.json({ mensaje: 'ESTADO ACTUALIZADO A ' + estado.toUpperCase() });
+    res.json({ mensaje: 'PETICIÓN ACTUALIZADA CORRECTAMENTE' });
   } catch (err) {
     res.status(500).json({ error: err.message.toUpperCase() });
   }
 });
+
 
 
 
