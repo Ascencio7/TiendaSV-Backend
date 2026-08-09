@@ -1149,21 +1149,45 @@ app.delete('/admin/comentarios/:id', async (req, res) => {
   }
 });
 
-// Obtener mensajes de soporte (Admin) - CORREGIDO
+// --- SISTEMA DE SOPORTE TÉCNICO ---
+
+// 1. Enviar mensaje de soporte (Clientes, Vendedores y Repartidores)
+app.post('/soporte', async (req, res) => {
+  const { usuario_id, mensaje } = req.body;
+
+  // Validación básica
+  if (!usuario_id || !mensaje) {
+    return res.status(400).json({ error: 'ID de usuario o mensaje ausentes' });
+  }
+
+  try {
+    await pool.query(
+      'INSERT INTO soporte (usuario_id, mensaje) VALUES ($1, $2)',
+      [usuario_id, mensaje]
+    );
+    res.status(201).json({ mensaje: 'Mensaje enviado con éxito' });
+  } catch (err) {
+    console.error("❌ ERROR AL ENVIAR SOPORTE:", err.message);
+    res.status(500).json({ error: 'Error interno al guardar el mensaje' });
+  }
+});
+
+// 2. Obtener todos los mensajes de soporte (Solo para el Administrador)
 app.get('/admin/soporte', async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT s.soporte_id, s.mensaje, s.usuario_id, s.estado,
-              u.nombre as usuario_nombre, u.correo as usuario_correo, 
-              u.rol as usuario_rol, u.foto_perfil,
-              TO_CHAR(s.fecha, 'DD/MM/YYYY HH:MI AM') as fecha
-       FROM soporte s
-       JOIN usuarios u ON s.usuario_id = u.usuario_id
-       ORDER BY s.fecha DESC`
-    );
+    const result = await pool.query(`
+      SELECT s.soporte_id, s.mensaje, s.usuario_id, s.estado,
+             u.nombre as usuario_nombre, u.correo as usuario_correo, 
+             u.rol as usuario_rol, u.foto_perfil,
+             TO_CHAR(s.fecha, 'DD/MM/YYYY HH:MI AM') as fecha
+      FROM soporte s
+      JOIN usuarios u ON s.usuario_id = u.usuario_id
+      ORDER BY s.fecha DESC
+    `);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("❌ ERROR AL OBTENER SOPORTE:", err.message);
+    res.status(500).json({ error: 'No se pudieron cargar los mensajes' });
   }
 });
 
