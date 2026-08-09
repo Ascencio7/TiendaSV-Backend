@@ -1175,8 +1175,8 @@ app.get('/admin/soporte', async (req, res) => {
       SELECT s.soporte_id, s.mensaje, s.usuario_id, s.estado,
              u.nombre as usuario_nombre, u.correo as usuario_correo, 
              u.rol as usuario_rol, u.foto_perfil,
-             -- Convertimos de UTC a la hora exacta de El Salvador para mostrar
-             TO_CHAR(s.fecha AT TIME ZONE 'UTC' AT TIME ZONE 'America/El_Salvador', 'DD/MM/YYYY HH12:MI AM') as fecha
+             -- Convertimos directamente a la zona de El Salvador y formateamos
+             TO_CHAR(s.fecha AT TIME ZONE 'America/El_Salvador', 'DD/MM/YYYY HH12:MI AM') as fecha
       FROM soporte s
       JOIN usuarios u ON s.usuario_id = u.usuario_id
       WHERE u.rol != 'admin'
@@ -1187,6 +1187,7 @@ app.get('/admin/soporte', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 // PRODUCTOS
