@@ -1531,9 +1531,37 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
 
 
 // Obtener detalle del seguimiento con una Barra de Estado
+// app.get('/ventas/:id/seguimiento', async (req, res) => {
+//   const { id } = req.params;
+//   try {
+//     const query = `
+//       SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
+//              u_cli.nombre as usuario_nombre,
+//              u_rep.nombre as repartidor_nombre, u_rep.telefono as repartidor_telefono, 
+//              u_rep.correo as repartidor_correo, u_rep.foto_perfil as repartidor_foto, 
+//              u_rep.tipo_transporte
+//       FROM movimientos m
+//       JOIN productos p ON m.producto_id = p.producto_id
+//       LEFT JOIN usuarios u_cli ON m.usuario_id = u_cli.usuario_id
+//       LEFT JOIN usuarios u_rep ON m.repartidor_id = u_rep.usuario_id
+//       WHERE m.movimiento_id = $1
+//     `;
+//     const result = await pool.query(query, [id]);
+//     res.json(result.rows[0]);
+//   } catch (err) { res.status(500).json({ error: err.message }); }
+// });
+
 app.get('/ventas/:id/seguimiento', async (req, res) => {
   const { id } = req.params;
   try {
+    // 1. Primero obtenemos el compra_id de ese movimiento
+    const baseReq = await pool.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
+    
+    if (baseReq.rows.length === 0) return res.status(404).json({ error: "No encontrado" });
+    const compraId = baseReq.rows[0].compra_id;
+
+    // 2. Si tiene compra_id, buscamos TODOS los productos de esa misma transacción
+    // Si no tiene (ventas antiguas), solo buscamos el ID individual
     const query = `
       SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
              u_cli.nombre as usuario_nombre,
@@ -1544,10 +1572,15 @@ app.get('/ventas/:id/seguimiento', async (req, res) => {
       JOIN productos p ON m.producto_id = p.producto_id
       LEFT JOIN usuarios u_cli ON m.usuario_id = u_cli.usuario_id
       LEFT JOIN usuarios u_rep ON m.repartidor_id = u_rep.usuario_id
-      WHERE m.movimiento_id = $1
+      WHERE ${compraId ? 'm.compra_id = $1' : 'm.movimiento_id = $1'}
     `;
-    const result = await pool.query(query, [id]);
-    res.json(result.rows[0]);
+    
+    const result = await pool.query(query, [compraId || id]);
+    
+    // Devolvemos el array completo de productos
+    // NOTA: Para no romper la App actual, podemos devolver un objeto que contenga la lista
+    // o simplemente el primer registro con un campo extra de "resumen"
+    res.json(result.rows); 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
