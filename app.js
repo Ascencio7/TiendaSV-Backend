@@ -294,11 +294,13 @@ app.post('/login/google', async (req, res) => {
 
 
 // Registro de Usuario
+// Registro de Usuario (CORREGIDO)
 app.post('/usuarios', async (req, res) => {
   const { 
     nombre, correo, telefono, password, rol,
-    nombreTienda, direccionTienda, departamentoTienda, municipioTienda,
-    latitud, longitud,
+    // Corregir a snake_case para que coincida con @SerializedName de Android
+    nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda,
+    latitud, longitud, foto_perfil, // También puedes añadir foto_perfil si la envías
     tipo_transporte, bici_marca, bici_color, bici_caracteristica,
     auto_marca_id, moto_marca_id, marca_otra,
     vehiculo_modelo, vehiculo_color, vehiculo_placa,
@@ -315,27 +317,30 @@ app.post('/usuarios', async (req, res) => {
     let sucursalId = null;
 
     if (rol === 'vendedor') {
+      // Usar las variables corregidas aquí
       const resTienda = await client.query(
         'INSERT INTO sucursales (nombre, direccion, departamento, municipio, latitud, longitud, activo) VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING sucursal_id',
-        [nombreTienda, direccionTienda, departamentoTienda, municipioTienda, latitud, longitud]
+        [nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda, latitud, longitud]
       );
       sucursalId = resTienda.rows[0].sucursal_id;
     }
 
+    // Si quieres guardar la foto de perfil en el registro, agrégala aquí y en el INSERT
     await client.query(
       `INSERT INTO usuarios (
         nombre, correo, telefono, password, rol, sucursal_id, activo,
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
         auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
-        vehiculo_tipo, vehiculo_anio, vehiculo_estado
-      ) VALUES ($1, $2, $3, crypt($4, gen_salt('bf', 10)), $5, $6, true, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+        vehiculo_tipo, vehiculo_anio, vehiculo_estado, foto_perfil
+      ) VALUES ($1, $2, $3, crypt($4, gen_salt('bf', 10)), $5, $6, true, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
       [
         nombre, correo, telefono, password, rol || 'cliente', sucursalId,
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
         auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
-        vehiculo_tipo, vehiculo_anio, vehiculo_estado
+        vehiculo_tipo, vehiculo_anio, vehiculo_estado,
+        foto_perfil || null // Campo opcional
       ]
     );
 
@@ -343,6 +348,7 @@ app.post('/usuarios', async (req, res) => {
     res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error("ERROR REGISTRO:", err.message); // Importante para debuggear en el servidor
     res.status(400).json({ error: err.message });
   } finally {
     client.release();
