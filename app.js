@@ -364,6 +364,7 @@ app.post('/usuarios/solicitar-activacion', async (req, res) => {
 
 
 // Obtener todos los comentarios realizados por un cliente específico
+// Cambia esto en tu index.js
 app.get('/usuarios/:usuario_id/comentarios', async (req, res) => {
   const { usuario_id } = req.params;
   try {
@@ -372,8 +373,8 @@ app.get('/usuarios/:usuario_id/comentarios', async (req, res) => {
              s.nombre as sucursal_nombre,
              TO_CHAR(c.fecha AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'DD/MM/YYYY') as fecha_fmt
       FROM comentarios c
-      JOIN productos p ON c.producto_id = p.producto_id
-      JOIN sucursales s ON c.sucursal_id = s.sucursal_id
+      LEFT JOIN productos p ON c.producto_id = p.producto_id
+      LEFT JOIN sucursales s ON c.sucursal_id = s.sucursal_id
       WHERE c.usuario_id = $1 AND c.activo = true
       ORDER BY c.fecha DESC
     `, [usuario_id]);
