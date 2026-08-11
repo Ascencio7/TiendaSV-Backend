@@ -363,27 +363,47 @@ app.post('/usuarios/solicitar-activacion', async (req, res) => {
 });
 
 
-// Obtener todos los comentarios realizados por un cliente específico
-// Cambia esto en tu index.js
+// Obtener todos los comentarios realizados por un cliente específico (CORREGIDO: Filtro tienda y Combos)
 app.get('/usuarios/:usuario_id/comentarios', async (req, res) => {
   const { usuario_id } = req.params;
+  const { sucursal_id } = req.query; // CAPTURAMOS EL FILTRO DE TIENDA
+  
   try {
-    const result = await pool.query(`
-      SELECT c.*, p.nombre as producto_nombre, p.imagen_url as producto_foto,
+    let query = `
+      SELECT c.*, 
              s.nombre as sucursal_nombre,
-             TO_CHAR(c.fecha AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'DD/MM/YYYY') as fecha_fmt
+             TO_CHAR(c.fecha AT TIME ZONE 'UTC' AT TIME ZONE 'CST', 'DD/MM/YYYY') as fecha_fmt,
+             -- Lógica para obtener el nombre del producto o del combo completo mediante STRING_AGG
+             (SELECT STRING_AGG(p2.nombre || ' (x' || m2.cantidad || ')', ', ')
+              FROM movimientos m2
+              JOIN productos p2 ON m2.producto_id = p2.producto_id
+              WHERE m2.compra_id = (SELECT compra_id FROM movimientos WHERE movimiento_id = c.movimiento_id)
+              OR (m2.movimiento_id = c.movimiento_id AND m2.compra_id IS NULL)
+             ) as producto_nombre,
+             -- Imagen del primer producto vinculado al comentario
+             (SELECT p3.imagen_url FROM productos p3 WHERE p3.producto_id = c.producto_id) as producto_foto
       FROM comentarios c
-      LEFT JOIN productos p ON c.producto_id = p.producto_id
       LEFT JOIN sucursales s ON c.sucursal_id = s.sucursal_id
       WHERE c.usuario_id = $1 AND c.activo = true
-      ORDER BY c.fecha DESC
-    `, [usuario_id]);
+    `;
+    
+    let params = [usuario_id];
+    
+    // FILTRO DE TIENDA DINÁMICO
+    if (sucursal_id && sucursal_id !== 'null' && sucursal_id !== '0') {
+      query += ` AND c.sucursal_id = $2`;
+      params.push(sucursal_id);
+    }
+    
+    query += ` ORDER BY c.fecha DESC`;
+    
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
+    console.error("Error en mis comentarios:", err.message);
     res.status(500).json({ error: err.message.toUpperCase() });
   }
 });
-
 
 
 // MARCAS DE MOTOS
