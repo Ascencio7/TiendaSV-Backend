@@ -294,7 +294,6 @@ app.post('/login/google', async (req, res) => {
 
 
 // Registro de Usuario
-// Registro de Usuario (CORREGIDO)
 app.post('/usuarios', async (req, res) => {
   const { 
     nombre, correo, telefono, password, rol,
@@ -325,7 +324,6 @@ app.post('/usuarios', async (req, res) => {
       sucursalId = resTienda.rows[0].sucursal_id;
     }
 
-    // Si quieres guardar la foto de perfil en el registro, agrégala aquí y en el INSERT
     await client.query(
       `INSERT INTO usuarios (
         nombre, correo, telefono, password, rol, sucursal_id, activo,
@@ -878,67 +876,18 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
 
 
 // Actualizar los datos de los usuarios
-app.put('/admin/usuarios/:id', async (req, res) => {
+app.patch('/admin/usuarios/:id/estado', async (req, res) => {
   const { id } = req.params;
-  const { 
-    nombre, correo, telefono, password, rol, activo, foto_perfil,
-    tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-    auto_marca_id, moto_marca_id, marca_otra,
-    vehiculo_modelo, vehiculo_color, vehiculo_placa,
-    vehiculo_tipo, vehiculo_anio, vehiculo_estado,
-    // Campos de pago añadidos
-    tarjeta_nombre, tarjeta_numero, tarjeta_fecha, tarjeta_cvv,
-    // Campos de tienda
-    nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda, latitud, longitud
-  } = req.body; 
+  const { activo } = req.body; // Solo recibimos el booleano 'activo'
 
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-
-    // Actualizar tabla usuarios (Incluyendo campos de pago)
-    const resUser = await client.query(
-      `UPDATE usuarios SET 
-        nombre = $1, correo = $2, telefono = $3,
-        password = COALESCE(crypt($4, gen_salt('bf', 10)), password),
-        foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
-        tipo_transporte = $8, bici_marca = $9, bici_color = $10, bici_caracteristica = $11,
-        auto_marca_id = $12, moto_marca_id = $13, marca_otra = $14,
-        vehiculo_modelo = $15, vehiculo_color = $16, vehiculo_placa = $17,
-        vehiculo_tipo = $18, vehiculo_anio = $19, vehiculo_estado = $20,
-        tarjeta_nombre = $21, tarjeta_numero = $22, tarjeta_fecha = $23, tarjeta_cvv = $24
-      WHERE usuario_id = $25 RETURNING sucursal_id`,
-      [
-        nombre, correo, telefono, password, foto_perfil, rol, activo,
-        tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-        auto_marca_id, moto_marca_id, marca_otra,
-        vehiculo_modelo, vehiculo_color, vehiculo_placa,
-        vehiculo_tipo, vehiculo_anio, vehiculo_estado,
-        tarjeta_nombre, tarjeta_numero, tarjeta_fecha, tarjeta_cvv,
-        id
-      ]
+    await pool.query(
+      'UPDATE usuarios SET activo = $1 WHERE usuario_id = $2',
+      [activo, id]
     );
-
-    // Si es Vendedor, actualizar también la información de su Tienda (sucursales)
-    if (rol === 'vendedor' && resUser.rows.length > 0 && resUser.rows[0].sucursal_id) {
-      await client.query(
-        `UPDATE sucursales SET 
-          nombre = $1, direccion = $2, departamento = $3, municipio = $4, 
-          latitud = $5, longitud = $6 
-        WHERE sucursal_id = $7`,
-        [nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda, latitud, longitud, resUser.rows[0].sucursal_id]
-      );
-    }
-
-    await client.query('COMMIT');
-    res.status(200).json({ mensaje: 'Perfil y Tienda actualizados correctamente' });
-
+    res.status(200).json({ mensaje: `Usuario ${activo ? 'activado' : 'desactivado'} correctamente` });
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error("ERROR SQL:", err.message);
     res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
   }
 });
 
