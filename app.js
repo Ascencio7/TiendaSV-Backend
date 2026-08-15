@@ -299,7 +299,8 @@ app.post('/usuarios', async (req, res) => {
     nombre, correo, telefono, password, rol,
     // Corregir a snake_case para que coincida con @SerializedName de Android
     nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda,
-    latitud, longitud, foto_perfil, // También puedes añadir foto_perfil si la envías
+    latitud, longitud, foto_perfil, 
+    foto_tienda, // <--- SE AGREGA ESTA LÍNEA (foto o logo de la tienda)
     tipo_transporte, bici_marca, bici_color, bici_caracteristica,
     auto_marca_id, moto_marca_id, marca_otra,
     vehiculo_modelo, vehiculo_color, vehiculo_placa,
@@ -316,10 +317,10 @@ app.post('/usuarios', async (req, res) => {
     let sucursalId = null;
 
     if (rol === 'vendedor') {
-      // Usar las variables corregidas aquí
+      // SE MODIFICA EL INSERT: Se agrega la columna imagen_banner y el parámetro $7
       const resTienda = await client.query(
-        'INSERT INTO sucursales (nombre, direccion, departamento, municipio, latitud, longitud, activo) VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING sucursal_id',
-        [nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda, latitud, longitud]
+        'INSERT INTO sucursales (nombre, direccion, departamento, municipio, latitud, longitud, imagen_banner, activo) VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING sucursal_id',
+        [nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda, latitud, longitud, foto_tienda]
       );
       sucursalId = resTienda.rows[0].sucursal_id;
     }
@@ -346,7 +347,7 @@ app.post('/usuarios', async (req, res) => {
     res.status(201).json({ mensaje: 'Usuario registrado con éxito' });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR REGISTRO:", err.message); // Importante para debuggear en el servidor
+    console.error("ERROR REGISTRO:", err.message);
     res.status(400).json({ error: err.message });
   } finally {
     client.release();
@@ -591,6 +592,26 @@ app.put('/vendedor/solicitudes/:id', async (req, res) => {
     res.json({ mensaje: `Solicitud ${estado}` });
   } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
   finally { client.release(); }
+});
+
+
+app.put('/vendedor/configuracion-tienda/:id', async (req, res) => {
+  const { id } = req.params; // sucursal_id
+  const { nombre, direccion, foto_tienda } = req.body;
+
+  try {
+    await pool.query(
+      `UPDATE sucursales SET 
+        nombre = COALESCE($1, nombre), 
+        direccion = COALESCE($2, direccion), 
+        imagen_banner = COALESCE($3, imagen_banner) 
+       WHERE sucursal_id = $4`,
+      [nombre, direccion, foto_tienda, id]
+    );
+    res.status(200).json({ mensaje: 'Información de la tienda actualizada' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 
