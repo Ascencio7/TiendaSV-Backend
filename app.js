@@ -366,18 +366,19 @@ app.put('/usuarios/:id', async (req, res) => {
     await client.query(
       `UPDATE usuarios SET 
         nombre = $1, telefono = $2, 
-        password = CASE WHEN $3 IS NOT NULL THEN crypt($3, gen_salt('bf', 10)) ELSE password END,
-        foto_perfil = COALESCE($4, foto_perfil)
+        password = CASE WHEN $3 IS NOT NULL AND $3 != '' THEN crypt($3, gen_salt('bf', 10)) ELSE password END,
+        foto_perfil = COALESCE(NULLIF($4, ''), foto_perfil)
        WHERE usuario_id = $5`,
       [nombre, telefono, password || null, foto_perfil, id]
     );
 
-    // 2. Si es vendedor, actualizar datos de su Sucursal incluyendo el BANNER
+    // 2. Si es vendedor, actualizar datos de su Sucursal
     if (rol === 'vendedor' && sucursal_id) {
       await client.query(
         `UPDATE sucursales SET 
           nombre = $1, direccion = $2, 
-          imagen_banner = COALESCE($3, imagen_banner)
+          -- SOLO ACTUALIZA SI foto_tienda NO ES NULL NI VACÍO
+          imagen_banner = CASE WHEN $3 IS NOT NULL AND $3 != '' THEN $3 ELSE imagen_banner END
          WHERE sucursal_id = $4`,
         [nombre_tienda, direccion_tienda, foto_tienda, sucursal_id]
       );
@@ -390,6 +391,7 @@ app.put('/usuarios/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally { client.release(); }
 });
+
 
 
 // Cliente solicita activación
@@ -899,14 +901,19 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
   const { activo, rol, usuario_id } = req.query;
   try {
     let query = `
-      SELECT u.*, s.nombre as nombre_tienda 
+      SELECT u.*, 
+             s.nombre as nombre_tienda, 
+             s.direccion as direccion_tienda, 
+             s.departamento as departamento_tienda, 
+             s.municipio as municipio_tienda,
+             s.latitud, s.longitud, 
+             s.imagen_banner as foto_tienda
       FROM usuarios u
       LEFT JOIN sucursales s ON u.sucursal_id = s.sucursal_id
       WHERE 1=1
     `;
     let params = [];
 
-    // LÓGICA DE EXCLUSIÓN: Si no se pide un rol específico, ocultamos a los admins
     if (!rol || rol === 'Todos') {
       query += ` AND u.rol != 'admin'`;
     } else {
