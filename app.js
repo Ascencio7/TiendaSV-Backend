@@ -362,25 +362,26 @@ app.put('/usuarios/:id', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Actualizar Usuario y obtener su sucursal_id real de la DB (por seguridad)
+    // 1. Actualizar Usuario - Añadimos ::text para que Postgres no se confunda
     const resUser = await client.query(
       `UPDATE usuarios SET 
         nombre = $1, telefono = $2, 
-        password = CASE WHEN $3 IS NOT NULL AND $3 != '' THEN crypt($3, gen_salt('bf', 10)) ELSE password END,
-        foto_perfil = COALESCE(NULLIF($4, ''), foto_perfil)
+        password = CASE WHEN $3::text IS NOT NULL AND $3::text != '' THEN crypt($3::text, gen_salt('bf', 10)) ELSE password END,
+        foto_perfil = COALESCE(NULLIF($4::text, ''), foto_perfil)
        WHERE usuario_id = $5 RETURNING sucursal_id`,
       [nombre, telefono, password || null, foto_perfil, id]
     );
 
+    // Obtenemos el ID de sucursal de la base de datos si no viene en el body
     const sucursal_id_db = sucursal_id || resUser.rows[0]?.sucursal_id;
 
     // 2. Si es vendedor, actualizar su tienda
-    // Usamos .toLowerCase() para evitar errores de mayúsculas
     if (rol && rol.toLowerCase() === 'vendedor' && sucursal_id_db) {
       await client.query(
         `UPDATE sucursales SET 
           nombre = $1, direccion = $2, 
-          imagen_banner = CASE WHEN $3 IS NOT NULL AND $3 != '' THEN $3 ELSE imagen_banner END
+          -- ESPECIFICAMOS ::text AQUÍ TAMBIÉN (Parámetro $3)
+          imagen_banner = CASE WHEN $3::text IS NOT NULL AND $3::text != '' THEN $3::text ELSE imagen_banner END
          WHERE sucursal_id = $4`,
         [nombre_tienda, direccion_tienda, foto_tienda, sucursal_id_db]
       );
@@ -390,7 +391,8 @@ app.put('/usuarios/:id', async (req, res) => {
     res.status(200).json({ mensaje: 'Perfil actualizado correctamente' });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error("ERROR AL ACTUALIZAR:", err.message);
+    res.status(500).json({ error: err.message }); // Enviamos el error real a la App
   } finally { client.release(); }
 });
 
