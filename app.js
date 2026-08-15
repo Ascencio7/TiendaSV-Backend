@@ -372,12 +372,12 @@ app.put('/usuarios/:id', async (req, res) => {
       [nombre, telefono, password || null, foto_perfil, id]
     );
 
-    // 2. Si es vendedor, actualizar datos de su Sucursal
+    // 2. Si es vendedor, actualizar sucursal
     if (rol === 'vendedor' && sucursal_id) {
       await client.query(
         `UPDATE sucursales SET 
           nombre = $1, direccion = $2, 
-          -- SOLO ACTUALIZA SI foto_tienda NO ES NULL NI VACÍO
+          -- SOLO ACTUALIZA LA FOTO SI SE ENVÍA UNA NUEVA (NO VACÍA)
           imagen_banner = CASE WHEN $3 IS NOT NULL AND $3 != '' THEN $3 ELSE imagen_banner END
          WHERE sucursal_id = $4`,
         [nombre_tienda, direccion_tienda, foto_tienda, sucursal_id]
@@ -896,6 +896,7 @@ app.get('/admin/reporte-ventas', async (req, res) => {
 });
 
 
+// Reporte de Usuarios con Filtros: Estado, Rol, Usuario Específico
 // Reporte de Usuarios con Filtros: Estado, Rol, Usuario Específico
 app.get('/admin/reporte-usuarios', async (req, res) => {
   const { activo, rol, usuario_id } = req.query;
