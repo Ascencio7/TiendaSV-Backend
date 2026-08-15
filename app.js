@@ -356,13 +356,13 @@ app.post('/usuarios', async (req, res) => {
 
 app.put('/usuarios/:id', async (req, res) => {
   const { id } = req.params;
-  const { nombre, telefono, password, foto_perfil, rol, nombre_tienda, direccion_tienda, foto_tienda } = req.body;
+  const { nombre, telefono, password, foto_perfil, rol, sucursal_id, nombre_tienda, direccion_tienda, foto_tienda } = req.body;
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // 1. Actualizar datos de Usuario
+    // 1. Actualizar Usuario y obtener su sucursal_id real de la DB (por seguridad)
     const resUser = await client.query(
       `UPDATE usuarios SET 
         nombre = $1, telefono = $2, 
@@ -372,10 +372,11 @@ app.put('/usuarios/:id', async (req, res) => {
       [nombre, telefono, password || null, foto_perfil, id]
     );
 
-    const sucursal_id_db = resUser.rows[0]?.sucursal_id;
+    const sucursal_id_db = sucursal_id || resUser.rows[0]?.sucursal_id;
 
-    // 2. Si es vendedor, actualizar sucursal usando el ID que acabamos de obtener de la DB
-    if (rol === 'vendedor' && sucursal_id_db) {
+    // 2. Si es vendedor, actualizar su tienda
+    // Usamos .toLowerCase() para evitar errores de mayúsculas
+    if (rol && rol.toLowerCase() === 'vendedor' && sucursal_id_db) {
       await client.query(
         `UPDATE sucursales SET 
           nombre = $1, direccion = $2, 
@@ -389,7 +390,6 @@ app.put('/usuarios/:id', async (req, res) => {
     res.status(200).json({ mensaje: 'Perfil actualizado correctamente' });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR AL ACTUALIZAR PERFIL:", err.message);
     res.status(500).json({ error: err.message });
   } finally { client.release(); }
 });
