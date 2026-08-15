@@ -297,10 +297,9 @@ app.post('/login/google', async (req, res) => {
 app.post('/usuarios', async (req, res) => {
   const { 
     nombre, correo, telefono, password, rol,
-    // Corregir a snake_case para que coincida con @SerializedName de Android
     nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda,
     latitud, longitud, foto_perfil, 
-    foto_tienda, // <--- SE AGREGA ESTA LÍNEA (foto o logo de la tienda)
+    foto_tienda, // <--- Nueva variable recibida de Android
     tipo_transporte, bici_marca, bici_color, bici_caracteristica,
     auto_marca_id, moto_marca_id, marca_otra,
     vehiculo_modelo, vehiculo_color, vehiculo_placa,
@@ -317,7 +316,7 @@ app.post('/usuarios', async (req, res) => {
     let sucursalId = null;
 
     if (rol === 'vendedor') {
-      // SE MODIFICA EL INSERT: Se agrega la columna imagen_banner y el parámetro $7
+      // Guardamos la foto en la columna imagen_banner
       const resTienda = await client.query(
         'INSERT INTO sucursales (nombre, direccion, departamento, municipio, latitud, longitud, imagen_banner, activo) VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING sucursal_id',
         [nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda, latitud, longitud, foto_tienda]
@@ -339,7 +338,7 @@ app.post('/usuarios', async (req, res) => {
         auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
         vehiculo_tipo, vehiculo_anio, vehiculo_estado,
-        foto_perfil || null // Campo opcional
+        foto_perfil || null
       ]
     );
 
@@ -352,6 +351,44 @@ app.post('/usuarios', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+
+app.put('/usuarios/:id', async (req, res) => {
+  const { id } = req.params;
+  const { nombre, telefono, password, foto_perfil, rol, sucursal_id, nombre_tienda, direccion_tienda, foto_tienda } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Actualizar datos de Usuario
+    await client.query(
+      `UPDATE usuarios SET 
+        nombre = $1, telefono = $2, 
+        password = CASE WHEN $3 IS NOT NULL THEN crypt($3, gen_salt('bf', 10)) ELSE password END,
+        foto_perfil = COALESCE($4, foto_perfil)
+       WHERE usuario_id = $5`,
+      [nombre, telefono, password || null, foto_perfil, id]
+    );
+
+    // 2. Si es vendedor, actualizar datos de su Sucursal incluyendo el BANNER
+    if (rol === 'vendedor' && sucursal_id) {
+      await client.query(
+        `UPDATE sucursales SET 
+          nombre = $1, direccion = $2, 
+          imagen_banner = COALESCE($3, imagen_banner)
+         WHERE sucursal_id = $4`,
+        [nombre_tienda, direccion_tienda, foto_tienda, sucursal_id]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.status(200).json({ mensaje: 'Perfil actualizado correctamente' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { client.release(); }
 });
 
 
