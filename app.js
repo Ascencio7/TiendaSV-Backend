@@ -1857,6 +1857,69 @@ app.get('/caja/reporte-resumen/:vendedor_id', async (req, res) => {
 
 
 
+// --- ENDPOINTS DE DESCUBRIMIENTO (ESTILO PEDIDOSYA) ---
+
+// 1. LOS MÁS VENDIDOS DE LA SEMANA
+// Filtra movimientos de salida de los últimos 7 días y agrupa por sucursal
+app.get('/sucursales/mas-vendidos', async (req, res) => {
+  try {
+    const query = `
+      SELECT s.*, COUNT(m.movimiento_id) as total_ventas
+      FROM sucursales s
+      JOIN productos p ON s.sucursal_id = p.sucursal_id
+      JOIN movimientos m ON p.producto_id = m.producto_id
+      WHERE m.tipo = 'salida' 
+        AND m.fecha >= NOW() - INTERVAL '7 days'
+        AND s.activo = true
+      GROUP BY s.sucursal_id
+      ORDER BY total_ventas DESC
+      LIMIT 10
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. LOS MEJORES CALIFICADOS
+// Calcula el promedio de estrellas de la tabla comentarios
+app.get('/sucursales/mejores-calificadas', async (req, res) => {
+  try {
+    const query = `
+      SELECT s.*, 
+             ROUND(AVG(c.calificacion), 1) as promedio_estrellas,
+             COUNT(c.comentario_id) as total_resenas
+      FROM sucursales s
+      LEFT JOIN comentarios c ON s.sucursal_id = c.sucursal_id
+      WHERE s.activo = true
+      GROUP BY s.sucursal_id
+      HAVING AVG(c.calificacion) >= 4.0
+      ORDER BY promedio_estrellas DESC
+      LIMIT 10
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. TIENDAS CON MEJOR PRECIO (ECONÓMICAS)
+// Filtra por el nuevo campo rango_precio = 1
+app.get('/sucursales/economicas', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM sucursales WHERE activo = true AND rango_precio = 1 ORDER BY nombre ASC LIMIT 10'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
 // Mensaje de que la API esta funcionando en RENDER
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
 
