@@ -899,7 +899,6 @@ app.get('/admin/reporte-ventas', async (req, res) => {
 
 
 // Reporte de Usuarios con Filtros: Estado, Rol, Usuario Específico
-// Reporte de Usuarios con Filtros: Estado, Rol, Usuario Específico
 app.get('/admin/reporte-usuarios', async (req, res) => {
   const { activo, rol, usuario_id } = req.query;
   try {
@@ -910,7 +909,7 @@ app.get('/admin/reporte-usuarios', async (req, res) => {
              s.departamento as departamento_tienda, 
              s.municipio as municipio_tienda,
              s.latitud, s.longitud, 
-             s.imagen_banner as foto_tienda
+             s.imagen_banner as foto_tienda  -- ESTO ES LO QUE HACE QUE CARGUE
       FROM usuarios u
       LEFT JOIN sucursales s ON u.sucursal_id = s.sucursal_id
       WHERE 1=1
