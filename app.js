@@ -1367,11 +1367,11 @@ app.get('/productos', async (req, res) => {
 
 // Al crear un producto lo guardamos de quién es el dueño: usuario_id
 app.post('/productos', async (req, res) => {
-  const { codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id } = req.body;  
+  const { codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id, fecha_caducidad, hora_caducidad } = req.body;  
   try {
     const result = await pool.query(
-      'INSERT INTO productos (codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *', 
-      [codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id]
+      'INSERT INTO productos (codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id, fecha_caducidad, hora_caducidad) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *', 
+      [codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, usuario_id, fecha_caducidad || null, hora_caducidad || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -1384,11 +1384,11 @@ app.post('/productos', async (req, res) => {
 // Actualizar los datos de un producto en especifico
 app.put('/productos/:id', async (req, res) => {
   const { id } = req.params;
-  const { codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id } = req.body;
+  const { codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, fecha_caducidad, hora_caducidad} = req.body;
   try {
     const result = await pool.query(
-      'UPDATE productos SET codigo_barras = $1, nombre = $2, categoria_id = $3, precio = $4, costo = $5, stock = $6, imagen_url = $7, activo = $8, sucursal_id = $9 WHERE producto_id = $10 RETURNING *',
-      [codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, id]
+      'UPDATE productos SET codigo_barras = $1, nombre = $2, categoria_id = $3, precio = $4, costo = $5, stock = $6, imagen_url = $7, activo = $8, sucursal_id = $9, fecha_caducidad = $10, hora_caducidad = $11 WHERE producto_id = $12 RETURNING *',
+      [codigo_barras, nombre, categoria_id, precio, costo, stock, imagen_url, activo, sucursal_id, fecha_caducidad, hora_caducidad, id]
     );
     res.json(result.rows[0]);
   } catch (err) {
