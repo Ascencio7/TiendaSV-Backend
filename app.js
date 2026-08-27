@@ -1546,37 +1546,36 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 
 // Editar o solicitar cancelacion desde el cliente
 
-// Edita detalles, cantidad y total del pedido
 app.put('/ventas/:id/detalles', async (req, res) => {
   const { id } = req.params;
+  // IMPORTANTE: Debes extraer 'cantidad' y 'total' del body
   const { direccion_entrega, telefono_contacto, cantidad, total } = req.body;
   
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // 1. Obtener la cantidad actual para calcular la diferencia
+    // 1. Obtener datos actuales para calcular la diferencia de stock
     const currentMov = await client.query(
       "SELECT cantidad, producto_id FROM movimientos WHERE movimiento_id = $1 FOR UPDATE",
       [id]
     );
 
-    if (currentMov.rows.length === 0) {
-      throw new Error("Pedido no encontrado");
-    }
+    if (currentMov.rows.length === 0) throw new Error("Pedido no encontrado");
 
     const oldQty = currentMov.rows[0].cantidad;
     const prodId = currentMov.rows[0].producto_id;
-    const diff = cantidad - oldQty; // Si es negativo, estamos devolviendo stock
+    
+    // Si la nueva cantidad es menor, diff será negativo (ej: 2 - 5 = -3)
+    const diff = parseInt(cantidad) - parseInt(oldQty); 
 
-    // 2. Ajustar el stock en la tabla productos
-    // Si diff es positivo, resta stock. Si es negativo, suma (devuelve).
+    // 2. Ajustar stock: stock - (-3) = stock + 3 (Devuelve stock al vendedor)
     await client.query(
       "UPDATE productos SET stock = stock - $1 WHERE producto_id = $2",
       [diff, prodId]
     );
 
-    // 3. Actualizar el movimiento con los nuevos datos
+    // 3. Actualizar el pedido
     const result = await client.query(
       `UPDATE movimientos 
        SET direccion_entrega = COALESCE($1, direccion_entrega), 
@@ -1592,7 +1591,7 @@ app.put('/ventas/:id/detalles', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR EDICIÓN:", err.message);
+    console.error("ERROR DB:", err.message);
     res.status(400).json({ error: err.message });
   } finally {
     client.release();
