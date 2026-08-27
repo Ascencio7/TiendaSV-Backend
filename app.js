@@ -1547,20 +1547,23 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 
 // Editar o solicitar cancelacion desde el cliente
 
-// Editar detalles del pedido: Solo si está Pendiente
+// Edita detalles, cantidad y total del pedido
 app.put('/ventas/:id/detalles', async (req, res) => {
   const { id } = req.params;
-  const { direccion_entrega, telefono_contacto } = req.body;
+  const { direccion_entrega, telefono_contacto, cantidad, total } = req.body; // <-- AHORA RECIBE TODO
   try {
     const result = await pool.query(
       `UPDATE movimientos 
-       SET direccion_entrega = $1, telefono_contacto = $2 
-       WHERE movimiento_id = $3 AND estado_entrega = 'Pendiente' 
+       SET direccion_entrega = COALESCE($1, direccion_entrega), 
+           telefono_contacto = COALESCE($2, telefono_contacto),
+           cantidad = COALESCE($3, cantidad),
+           total = COALESCE($4, total)
+       WHERE movimiento_id = $5 AND estado_entrega = 'Pendiente' 
        RETURNING *`,
-      [direccion_entrega, telefono_contacto, id]
+      [direccion_entrega, telefono_contacto, cantidad, total, id]
     );
     if (result.rows.length > 0) res.json(result.rows[0]);
-    else res.status(400).json({ error: "No se puede editar, el pedido ya está en camino." });
+    else res.status(400).json({ error: "No se puede editar o el pedido ya no está pendiente." });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1595,27 +1598,6 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
 });
 
 
-// Obtener detalle del seguimiento con una Barra de Estado
-// app.get('/ventas/:id/seguimiento', async (req, res) => {
-//   const { id } = req.params;
-//   try {
-//     const query = `
-//       SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
-//              u_cli.nombre as usuario_nombre,
-//              u_rep.nombre as repartidor_nombre, u_rep.telefono as repartidor_telefono, 
-//              u_rep.correo as repartidor_correo, u_rep.foto_perfil as repartidor_foto, 
-//              u_rep.tipo_transporte
-//       FROM movimientos m
-//       JOIN productos p ON m.producto_id = p.producto_id
-//       LEFT JOIN usuarios u_cli ON m.usuario_id = u_cli.usuario_id
-//       LEFT JOIN usuarios u_rep ON m.repartidor_id = u_rep.usuario_id
-//       WHERE m.movimiento_id = $1
-//     `;
-//     const result = await pool.query(query, [id]);
-//     res.json(result.rows[0]);
-//   } catch (err) { res.status(500).json({ error: err.message }); }
-// });
-
 app.get('/ventas/:id/seguimiento', async (req, res) => {
   const { id } = req.params;
   try {
@@ -1628,7 +1610,9 @@ app.get('/ventas/:id/seguimiento', async (req, res) => {
     // 2. Si tiene compra_id, buscamos TODOS los productos de esa misma transacción
     // Si no tiene (ventas antiguas), solo buscamos el ID individual
     const query = `
-      SELECT m.*, p.nombre as producto_nombre, (m.cantidad * p.precio) as total,
+      SELECT m.*, p.nombre as producto_nombre, 
+             p.precio as precio_unitario,
+             (m.cantidad * p.precio) as total,
              u_cli.nombre as usuario_nombre,
              u_rep.nombre as repartidor_nombre, u_rep.telefono as repartidor_telefono, 
              u_rep.correo as repartidor_correo, u_rep.foto_perfil as repartidor_foto, 
