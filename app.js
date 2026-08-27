@@ -1481,15 +1481,17 @@ app.post('/ventas/multiple', async (req, res) => {
     await client.query('BEGIN');
     
     for (const item of items) {
-      // 1. Obtener precio real para evitar guardar en $0.00
+      // 1. Obtener precio real para calcular el total
       const prodRes = await client.query("SELECT precio FROM productos WHERE producto_id = $1", [item.producto_id]);
+      if (prodRes.rows.length === 0) throw new Error("Producto no encontrado");
+      
       const precioUnitario = prodRes.rows[0].precio;
-      const totalItem = precioUnitario * item.cantidad;
+      const totalItem = precioUnitario * item.cantidad; // <--- DEFINIMOS totalItem
 
       // 2. Descontar stock
       await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [item.cantidad, item.producto_id]);
       
-      // 3. Insertar movimiento (CORREGIDO: itemTotal ahora es totalItem)
+      // 3. Insertar movimiento (Usamos totalItem)
       await client.query(
         `INSERT INTO movimientos 
         (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id) 
@@ -1513,7 +1515,6 @@ app.post('/ventas/multiple', async (req, res) => {
     client.release(); 
   }
 });
-
 
 
 // Procesar decisión: Aceptar o Declinar cancelación del pedido
