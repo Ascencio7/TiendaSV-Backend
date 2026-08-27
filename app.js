@@ -1532,29 +1532,58 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 
 
 // Editar o solicitar cancelacion desde el cliente
-
+// --- ÚNICA RUTA DE EDICIÓN CORREGIDA ---
 app.put('/ventas/:id/detalles', async (req, res) => {
   const { id } = req.params;
   const { direccion_entrega, telefono_contacto, cantidad, total } = req.body;
+  
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const current = await client.query("SELECT cantidad, producto_id FROM movimientos WHERE movimiento_id = $1 FOR UPDATE", [id]);
-    if (current.rows.length === 0) throw new Error("Pedido no encontrado");
 
-    const diff = parseInt(cantidad) - parseInt(current.rows[0].cantidad);
-    // Ajustar stock (si diff es negativo, se suma stock al producto)
-    await client.query("UPDATE productos SET stock = stock - $1 WHERE producto_id = $2", [diff, current.rows[0].producto_id]);
+    // 1. Obtener datos actuales para la devolución de stock
+    const currentMov = await client.query(
+      "SELECT cantidad, producto_id FROM movimientos WHERE movimiento_id = $1 FOR UPDATE",
+      [id]
+    );
 
-    const result = await pool.query(
-      `UPDATE movimientos SET direccion_entrega = $1, telefono_contacto = $2, cantidad = $3, total = $4 
-       WHERE movimiento_id = $5 AND estado_entrega = 'Pendiente' RETURNING *`,
+    if (currentMov.rows.length === 0) throw new Error("Pedido no encontrado");
+
+    const oldQty = currentMov.rows[0].cantidad;
+    const prodId = currentMov.rows[0].producto_id;
+    
+    // Si bajas la cantidad, diff es negativo y el stock sube (devuelve al estante)
+    const diff = parseInt(cantidad) - parseInt(oldQty); 
+
+    // 2. Ajustar stock en la tabla productos
+    await client.query(
+      "UPDATE productos SET stock = stock - $1 WHERE producto_id = $2",
+      [diff, prodId]
+    );
+
+    // 3. Actualizar el movimiento con los nuevos datos
+    const result = await client.query(
+      `UPDATE movimientos 
+       SET direccion_entrega = COALESCE($1, direccion_entrega), 
+           telefono_contacto = COALESCE($2, telefono_contacto),
+           cantidad = $3,
+           total = $4
+       WHERE movimiento_id = $5 AND estado_entrega = 'Pendiente' 
+       RETURNING *`,
       [direccion_entrega, telefono_contacto, cantidad, total, id]
     );
+
+    if (result.rowCount === 0) throw new Error("El pedido ya no está Pendiente");
+
     await client.query('COMMIT');
     res.json(result.rows[0]);
-  } catch (err) { await client.query('ROLLBACK'); res.status(400).json({ error: err.message }); }
-  finally { client.release(); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error("ERROR AL EDITAR:", err.message);
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 
