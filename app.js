@@ -1548,14 +1548,13 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 
 app.put('/ventas/:id/detalles', async (req, res) => {
   const { id } = req.params;
-  // IMPORTANTE: Debes extraer 'cantidad' y 'total' del body
   const { direccion_entrega, telefono_contacto, cantidad, total } = req.body;
   
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // 1. Obtener datos actuales para calcular la diferencia de stock
+    // 1. Obtener datos actuales para la devolución de stock
     const currentMov = await client.query(
       "SELECT cantidad, producto_id FROM movimientos WHERE movimiento_id = $1 FOR UPDATE",
       [id]
@@ -1566,16 +1565,16 @@ app.put('/ventas/:id/detalles', async (req, res) => {
     const oldQty = currentMov.rows[0].cantidad;
     const prodId = currentMov.rows[0].producto_id;
     
-    // Si la nueva cantidad es menor, diff será negativo (ej: 2 - 5 = -3)
+    // Si cantidad es 2 y oldQty es 5, diff = -3 (Devolvemos 3 al stock)
     const diff = parseInt(cantidad) - parseInt(oldQty); 
 
-    // 2. Ajustar stock: stock - (-3) = stock + 3 (Devuelve stock al vendedor)
+    // 2. Ajustar stock en la tienda (Resta la diferencia)
     await client.query(
       "UPDATE productos SET stock = stock - $1 WHERE producto_id = $2",
       [diff, prodId]
     );
 
-    // 3. Actualizar el pedido
+    // 3. Actualizar el movimiento
     const result = await client.query(
       `UPDATE movimientos 
        SET direccion_entrega = COALESCE($1, direccion_entrega), 
@@ -1591,7 +1590,7 @@ app.put('/ventas/:id/detalles', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR DB:", err.message);
+    console.error("ERROR AL EDITAR:", err.message);
     res.status(400).json({ error: err.message });
   } finally {
     client.release();
