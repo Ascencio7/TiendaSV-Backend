@@ -1530,60 +1530,30 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 
 
 // Editar o solicitar cancelacion desde el cliente
-// --- ÚNICA RUTA DE EDICIÓN CORREGIDA (REEMPLAZA LA QUE TIENES) ---
 app.put('/ventas/:id/detalles', async (req, res) => {
   const { id } = req.params;
   const { direccion_entrega, telefono_contacto, cantidad, total } = req.body;
-  
-  const client = await pool.connect(); // Abrimos conexión
+  const client = await pool.connect();
   try {
-    await client.query('BEGIN'); // Iniciamos transacción
+    await client.query('BEGIN');
+    const current = await client.query("SELECT cantidad, producto_id FROM movimientos WHERE movimiento_id = $1 FOR UPDATE", [id]);
+    if (current.rows.length === 0) throw new Error("Pedido no encontrado");
 
-    // 1. Obtener cantidad actual y producto (Bloqueamos la fila con FOR UPDATE)
-    const currentMov = await client.query(
-      "SELECT cantidad, producto_id FROM movimientos WHERE movimiento_id = $1 FOR UPDATE",
-      [id]
-    );
+    // Lógica de diferencia de stock corregida
+    const diff = parseInt(cantidad) - parseInt(current.rows[0].cantidad);
+    await client.query("UPDATE productos SET stock = stock - $1 WHERE producto_id = $2", [diff, current.rows[0].producto_id]);
 
-    if (currentMov.rows.length === 0) throw new Error("Pedido no encontrado");
-
-    const oldQty = currentMov.rows[0].cantidad;
-    const prodId = currentMov.rows[0].producto_id;
-    
-    // Calculamos diferencia: si bajas de 5 a 2, diff es -3.
-    const diff = parseInt(cantidad) - parseInt(oldQty); 
-
-    // 2. Ajustar stock en la tabla productos (stock - (-3) = stock + 3)
-    // Esto devuelve los productos al vendedor automáticamente
-    await client.query(
-      "UPDATE productos SET stock = stock - $1 WHERE producto_id = $2",
-      [diff, prodId]
-    );
-
-    // 3. ACTUALIZAR EL PEDIDO (Usamos 'client', no 'pool' para evitar el bloqueo)
     const result = await client.query(
-      `UPDATE movimientos 
-       SET direccion_entrega = COALESCE($1, direccion_entrega), 
-           telefono_contacto = COALESCE($2, telefono_contacto),
-           cantidad = $3,
-           total = $4
-       WHERE movimiento_id = $5 AND estado_entrega = 'Pendiente' 
-       RETURNING *`,
+      `UPDATE movimientos SET direccion_entrega = $1, telefono_contacto = $2, cantidad = $3, total = $4 
+       WHERE movimiento_id = $5 AND estado_entrega = 'Pendiente' RETURNING *`,
       [direccion_entrega, telefono_contacto, cantidad, total, id]
     );
-
-    if (result.rowCount === 0) throw new Error("El pedido ya no está Pendiente");
-
-    await client.query('COMMIT'); // Guardamos todo
+    await client.query('COMMIT');
     res.json(result.rows[0]);
-
-  } catch (err) {
-    await client.query('ROLLBACK'); // Si algo falla, deshacemos los cambios
-    console.error("ERROR AL EDITAR:", err.message);
-    res.status(400).json({ error: err.message });
-  } finally {
-    client.release(); // Cerramos la conexión
-  }
+  } catch (err) { 
+    await client.query('ROLLBACK'); 
+    res.status(400).json({ error: err.message }); 
+  } finally { client.release(); }
 });
 
 
