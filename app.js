@@ -1530,31 +1530,33 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 
 
 // Editar o solicitar cancelacion desde el cliente
-// --- RUTA DE EDICIÓN SIMPLIFICADA (EL STOCK LO MANEJA EL TRIGGER) ---
 app.put('/ventas/:id/detalles', async (req, res) => {
   const { id } = req.params;
   const { direccion_entrega, telefono_contacto, cantidad, total } = req.body;
-  
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      `UPDATE movimientos 
-       SET direccion_entrega = COALESCE($1, direccion_entrega), 
-           telefono_contacto = COALESCE($2, telefono_contacto),
-           cantidad = $3,
-           total = $4
-       WHERE movimiento_id = $5 AND estado_entrega = 'Pendiente' 
-       RETURNING *`,
+    await client.query('BEGIN');
+    const current = await client.query("SELECT cantidad, producto_id FROM movimientos WHERE movimiento_id = $1 FOR UPDATE", [id]);
+    if (current.rows.length === 0) throw new Error("Pedido no encontrado");
+
+    const diff = parseInt(cantidad) - parseInt(current.rows[0].cantidad);
+    // IMPORTANTE: Aquí se actualiza el stock. Asegúrate de NO tener un Trigger en SQL que haga lo mismo, o se restará doble.
+    await client.query("UPDATE productos SET stock = stock - $1 WHERE producto_id = $2", [diff, current.rows[0].producto_id]);
+
+    // USA SIEMPRE 'client' AQUÍ PARA EVITAR BLOQUEOS
+    const result = await client.query(
+      `UPDATE movimientos SET direccion_entrega = $1, telefono_contacto = $2, cantidad = $3, total = $4 
+       WHERE movimiento_id = $5 AND estado_entrega = 'Pendiente' RETURNING *`,
       [direccion_entrega, telefono_contacto, cantidad, total, id]
     );
 
-    if (result.rows.length > 0) {
-      res.json(result.rows[0]);
-    } else {
-      res.status(400).json({ error: "El pedido ya no está pendiente o no existe." });
-    }
+    await client.query('COMMIT');
+    res.json(result.rows[0]);
   } catch (err) {
-    console.error("ERROR:", err.message);
-    res.status(500).json({ error: "Error al actualizar los datos." });
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
