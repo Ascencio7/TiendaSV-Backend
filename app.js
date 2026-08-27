@@ -1419,17 +1419,15 @@ app.post('/ventas', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // 1. Obtener precio para calcular el total
-    const prod = await client.query("SELECT precio FROM productos WHERE producto_id = $1", [producto_id]);
-    const totalVenta = prod.rows[0].precio * cantidad;
+    const prodRes = await client.query("SELECT precio FROM productos WHERE producto_id = $1", [producto_id]);
+    const precioU = prodRes.rows[0].precio;
+    const totalVenta = precioU * cantidad;
 
     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
-    
     await client.query(
-      `INSERT INTO movimientos 
-       (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, monto_recibido, vuelto_entregado, entrega_domicilio, direccion_entrega, estado_entrega, telefono_contacto) 
+      `INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, monto_recibido, vuelto_entregado, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega) 
        VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11)`,
-      [producto_id, usuario_id, cantidad, totalVenta, metodoPago, monto_recibido || 0, vuelto_entregado || 0, entregaDomicilio, direccionEntrega, entregaDomicilio ? 'Pendiente' : 'Completado', telefonoContacto]
+      [producto_id, usuario_id, cantidad, totalVenta, metodoPago, monto_recibido || 0, vuelto_entregado || 0, entregaDomicilio, direccionEntrega, telefonoContacto, entregaDomicilio ? 'Pendiente' : 'Completado']
     );
     await client.query('COMMIT');
     res.status(201).json({ mensaje: "Venta registrada" });
@@ -1532,16 +1530,16 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 
 
 // Editar o solicitar cancelacion desde el cliente
-// --- ÚNICA RUTA DE EDICIÓN CORREGIDA ---
+// --- ÚNICA RUTA DE EDICIÓN CORREGIDA (REEMPLAZA LA QUE TIENES) ---
 app.put('/ventas/:id/detalles', async (req, res) => {
   const { id } = req.params;
   const { direccion_entrega, telefono_contacto, cantidad, total } = req.body;
   
-  const client = await pool.connect();
+  const client = await pool.connect(); // Abrimos conexión
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); // Iniciamos transacción
 
-    // 1. Obtener datos actuales para la devolución de stock
+    // 1. Obtener cantidad actual y producto (Bloqueamos la fila con FOR UPDATE)
     const currentMov = await client.query(
       "SELECT cantidad, producto_id FROM movimientos WHERE movimiento_id = $1 FOR UPDATE",
       [id]
@@ -1552,16 +1550,17 @@ app.put('/ventas/:id/detalles', async (req, res) => {
     const oldQty = currentMov.rows[0].cantidad;
     const prodId = currentMov.rows[0].producto_id;
     
-    // Si bajas la cantidad, diff es negativo y el stock sube (devuelve al estante)
+    // Calculamos diferencia: si bajas de 5 a 2, diff es -3.
     const diff = parseInt(cantidad) - parseInt(oldQty); 
 
-    // 2. Ajustar stock en la tabla productos
+    // 2. Ajustar stock en la tabla productos (stock - (-3) = stock + 3)
+    // Esto devuelve los productos al vendedor automáticamente
     await client.query(
       "UPDATE productos SET stock = stock - $1 WHERE producto_id = $2",
       [diff, prodId]
     );
 
-    // 3. Actualizar el movimiento con los nuevos datos
+    // 3. ACTUALIZAR EL PEDIDO (Usamos 'client', no 'pool' para evitar el bloqueo)
     const result = await client.query(
       `UPDATE movimientos 
        SET direccion_entrega = COALESCE($1, direccion_entrega), 
@@ -1575,14 +1574,15 @@ app.put('/ventas/:id/detalles', async (req, res) => {
 
     if (result.rowCount === 0) throw new Error("El pedido ya no está Pendiente");
 
-    await client.query('COMMIT');
+    await client.query('COMMIT'); // Guardamos todo
     res.json(result.rows[0]);
+
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK'); // Si algo falla, deshacemos los cambios
     console.error("ERROR AL EDITAR:", err.message);
     res.status(400).json({ error: err.message });
   } finally {
-    client.release();
+    client.release(); // Cerramos la conexión
   }
 });
 
