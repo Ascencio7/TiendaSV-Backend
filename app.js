@@ -1475,21 +1475,27 @@ app.get('/ventas/historial', async (req, res) => {
 app.post('/ventas/multiple', async (req, res) => {
   const { items, usuario_id, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, repartidor_id } = req.body;
   const client = await pool.connect();
-  const compra_id = `TRX-${Date.now()}`; // Identificador único para agrupar el pedido
+  const compra_id = `TRX-${Date.now()}`; 
 
   try {
     await client.query('BEGIN');
     
     for (const item of items) {
-      // Descontar stock
+      // 1. Obtener precio real para evitar guardar en $0.00
+      const prodRes = await client.query("SELECT precio FROM productos WHERE producto_id = $1", [item.producto_id]);
+      const precioUnitario = prodRes.rows[0].precio;
+      const totalItem = precioUnitario * item.cantidad;
+
+      // 2. Descontar stock
       await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [item.cantidad, item.producto_id]);
       
+      // 3. Insertar movimiento (CORREGIDO: itemTotal ahora es totalItem)
       await client.query(
         `INSERT INTO movimientos 
         (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id) 
         VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11)`,
         [
-          item.producto_id, usuario_id, item.cantidad, itemTotal, // <--- TOTAL AÑADIDO
+          item.producto_id, usuario_id, item.cantidad, totalItem, 
           metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
           entregaDomicilio ? 'Pendiente' : 'Completado', 
           repartidor_id || null, compra_id
@@ -1501,11 +1507,13 @@ app.post('/ventas/multiple', async (req, res) => {
     res.status(201).json({ mensaje: "Compra múltiple realizada con éxito", compra_id });
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error("ERROR COMPRA:", err.message);
     res.status(500).json({ error: err.message });
   } finally { 
     client.release(); 
   }
 });
+
 
 
 // Procesar decisión: Aceptar o Declinar cancelación del pedido
@@ -1535,7 +1543,7 @@ app.put('/ventas/:id/detalles', async (req, res) => {
   const { direccion_entrega, telefono_contacto, cantidad, total } = req.body;
   
   try {
-    // Solo actualizamos el movimiento. El Trigger de SQL se encargará del stock.
+    // IMPORTANTE: Al actualizar 'cantidad', el TRIGGER de la base de datos se activa solo.
     const result = await pool.query(
       `UPDATE movimientos 
        SET direccion_entrega = COALESCE($1, direccion_entrega), 
@@ -1547,14 +1555,11 @@ app.put('/ventas/:id/detalles', async (req, res) => {
       [direccion_entrega, telefono_contacto, cantidad, total, id]
     );
 
-    if (result.rowCount > 0) {
-      res.json(result.rows[0]);
-    } else {
-      res.status(400).json({ error: "No se puede editar: el pedido ya no está Pendiente" });
-    }
+    if (result.rowCount > 0) res.json(result.rows[0]);
+    else res.status(400).json({ error: "No se puede editar: el pedido ya no está Pendiente" });
   } catch (err) {
-    console.error("ERROR AL EDITAR:", err.message);
-    res.status(500).json({ error: "Error interno del servidor" });
+    console.error("ERROR EDICIÓN:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
