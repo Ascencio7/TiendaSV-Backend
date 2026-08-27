@@ -1499,14 +1499,13 @@ app.post('/ventas/multiple', async (req, res) => {
       // Descontar stock
       await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [item.cantidad, item.producto_id]);
       
-      // Insertar movimiento con el compra_id
       await client.query(
         `INSERT INTO movimientos 
-         (producto_id, usuario_id, tipo, cantidad, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id) 
-         VALUES ($1, $2, 'salida', $3, NOW(), $4, $5, $6, $7, $8, $9, $10)`,
+        (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id) 
+        VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11)`,
         [
-          item.producto_id, usuario_id, item.cantidad, metodoPago, 
-          entregaDomicilio, direccionEntrega, telefonoContacto, 
+          item.producto_id, usuario_id, item.cantidad, itemTotal, // <--- TOTAL AÑADIDO
+          metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
           entregaDomicilio ? 'Pendiente' : 'Completado', 
           repartidor_id || null, compra_id
         ]
@@ -1550,21 +1549,54 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
 // Edita detalles, cantidad y total del pedido
 app.put('/ventas/:id/detalles', async (req, res) => {
   const { id } = req.params;
-  const { direccion_entrega, telefono_contacto, cantidad, total } = req.body; // <-- AHORA RECIBE TODO
+  const { direccion_entrega, telefono_contacto, cantidad, total } = req.body;
+  
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
+    await client.query('BEGIN');
+
+    // 1. Obtener la cantidad actual para calcular la diferencia
+    const currentMov = await client.query(
+      "SELECT cantidad, producto_id FROM movimientos WHERE movimiento_id = $1 FOR UPDATE",
+      [id]
+    );
+
+    if (currentMov.rows.length === 0) {
+      throw new Error("Pedido no encontrado");
+    }
+
+    const oldQty = currentMov.rows[0].cantidad;
+    const prodId = currentMov.rows[0].producto_id;
+    const diff = cantidad - oldQty; // Si es negativo, estamos devolviendo stock
+
+    // 2. Ajustar el stock en la tabla productos
+    // Si diff es positivo, resta stock. Si es negativo, suma (devuelve).
+    await client.query(
+      "UPDATE productos SET stock = stock - $1 WHERE producto_id = $2",
+      [diff, prodId]
+    );
+
+    // 3. Actualizar el movimiento con los nuevos datos
+    const result = await client.query(
       `UPDATE movimientos 
        SET direccion_entrega = COALESCE($1, direccion_entrega), 
            telefono_contacto = COALESCE($2, telefono_contacto),
-           cantidad = COALESCE($3, cantidad),
-           total = COALESCE($4, total)
+           cantidad = $3,
+           total = $4
        WHERE movimiento_id = $5 AND estado_entrega = 'Pendiente' 
        RETURNING *`,
       [direccion_entrega, telefono_contacto, cantidad, total, id]
     );
-    if (result.rows.length > 0) res.json(result.rows[0]);
-    else res.status(400).json({ error: "No se puede editar o el pedido ya no está pendiente." });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+
+    await client.query('COMMIT');
+    res.json(result.rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error("ERROR EDICIÓN:", err.message);
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 
