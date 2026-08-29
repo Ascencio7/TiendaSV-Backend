@@ -658,6 +658,21 @@ app.put('/vendedor/configuracion-tienda/:id', async (req, res) => {
 });
 
 
+app.patch('/vendedor/sucursal/:id/configuracion-tiempo', async (req, res) => {
+  const { id } = req.params;
+  const { tiempo_preparacion_min } = req.body;
+  try {
+    await pool.query(
+      'UPDATE sucursales SET tiempo_preparacion_min = $1 WHERE sucursal_id = $2',
+      [tiempo_preparacion_min, id]
+    );
+    res.json({ mensaje: 'Tiempo de preparación actualizado con éxito' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 // REPARTIDORES
 
@@ -1480,41 +1495,45 @@ app.post('/ventas/multiple', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    for (const item of items) {
-      // 1. Obtener precio real para calcular el total
-      const prodRes = await client.query("SELECT precio FROM productos WHERE producto_id = $1", [item.producto_id]);
-      if (prodRes.rows.length === 0) throw new Error("Producto no encontrado");
-      
-      const precioUnitario = prodRes.rows[0].precio;
-      const totalItem = precioUnitario * item.cantidad; // <--- DEFINIMOS totalItem
+    // 1. Obtenemos el tiempo de preparación configurado por la tienda
+    const sucursalRes = await client.query(
+      "SELECT tiempo_preparacion_min FROM sucursales WHERE sucursal_id = $1", 
+      [items[0].sucursal_id]
+    );
+    const prepMin = sucursalRes.rows[0]?.tiempo_preparacion_min || 15;
+    
+    // 2. Calculamos el tiempo prometido (Ahora + Preparación + 10 min margen trayecto)
+    const tiempoPrometido = Date.now() + (prepMin + 10) * 60000;
 
-      // 2. Descontar stock
+    for (const item of items) {
+      const prodRes = await client.query("SELECT precio FROM productos WHERE producto_id = $1", [item.producto_id]);
+      const precioUnitario = prodRes.rows[0].precio;
+      const totalItem = precioUnitario * item.cantidad;
+
       await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [item.cantidad, item.producto_id]);
       
-      // 3. Insertar movimiento (Usamos totalItem)
+      // 3. Insertamos el tiempo_prometido en el movimiento
       await client.query(
         `INSERT INTO movimientos 
-        (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id) 
-        VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11)`,
+        (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id, tiempo_prometido) 
+        VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           item.producto_id, usuario_id, item.cantidad, totalItem, 
           metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
           entregaDomicilio ? 'Pendiente' : 'Completado', 
-          repartidor_id || null, compra_id
+          repartidor_id || null, compra_id, tiempoPrometido
         ]
       );
     }
     
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: "Compra múltiple realizada con éxito", compra_id });
+    res.status(201).json({ mensaje: "Compra realizada", compra_id, tiempoPrometido });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR COMPRA:", err.message);
     res.status(500).json({ error: err.message });
-  } finally { 
-    client.release(); 
-  }
+  } finally { client.release(); }
 });
+
 
 
 // Procesar decisión: Aceptar o Declinar cancelación del pedido
@@ -1595,37 +1614,60 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
 });
 
 
+// app.get('/ventas/:id/seguimiento', async (req, res) => {
+//   const { id } = req.params;
+//   try {
+//     // 1. Primero obtenemos el compra_id de ese movimiento
+//     const baseReq = await pool.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
+    
+//     if (baseReq.rows.length === 0) return res.status(404).json({ error: "No encontrado" });
+//     const compraId = baseReq.rows[0].compra_id;
+
+//     // 2. Si tiene compra_id, buscamos TODOS los productos de esa misma transacción
+//     // Si no tiene (ventas antiguas), solo buscamos el ID individual
+//     const query = `
+//       SELECT m.*, p.nombre as producto_nombre, 
+//              p.precio as precio_unitario,
+//              (m.cantidad * p.precio) as total,
+//              u_cli.nombre as usuario_nombre,
+//              u_rep.nombre as repartidor_nombre, u_rep.telefono as repartidor_telefono, 
+//              u_rep.correo as repartidor_correo, u_rep.foto_perfil as repartidor_foto, 
+//              u_rep.tipo_transporte
+//       FROM movimientos m
+//       JOIN productos p ON m.producto_id = p.producto_id
+//       LEFT JOIN usuarios u_cli ON m.usuario_id = u_cli.usuario_id
+//       LEFT JOIN usuarios u_rep ON m.repartidor_id = u_rep.usuario_id
+//       WHERE ${compraId ? 'm.compra_id = $1' : 'm.movimiento_id = $1'}
+//     `;
+    
+//     const result = await pool.query(query, [compraId || id]);
+    
+//     // Devolvemos el array completo de productos
+//     // NOTA: Para no romper la App actual, podemos devolver un objeto que contenga la lista
+//     // o simplemente el primer registro con un campo extra de "resumen"
+//     res.json(result.rows); 
+//   } catch (err) { res.status(500).json({ error: err.message }); }
+// });
+
+
 app.get('/ventas/:id/seguimiento', async (req, res) => {
   const { id } = req.params;
   try {
-    // 1. Primero obtenemos el compra_id de ese movimiento
     const baseReq = await pool.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
-    
     if (baseReq.rows.length === 0) return res.status(404).json({ error: "No encontrado" });
     const compraId = baseReq.rows[0].compra_id;
 
-    // 2. Si tiene compra_id, buscamos TODOS los productos de esa misma transacción
-    // Si no tiene (ventas antiguas), solo buscamos el ID individual
     const query = `
-      SELECT m.*, p.nombre as producto_nombre, 
-             p.precio as precio_unitario,
-             (m.cantidad * p.precio) as total,
-             u_cli.nombre as usuario_nombre,
-             u_rep.nombre as repartidor_nombre, u_rep.telefono as repartidor_telefono, 
-             u_rep.correo as repartidor_correo, u_rep.foto_perfil as repartidor_foto, 
-             u_rep.tipo_transporte
+      SELECT m.*, p.nombre as producto_nombre, p.precio as precio_unitario,
+             m.tiempo_prometido, -- <--- CAMPO CLAVE
+             u_rep.nombre as repartidor_nombre, u_rep.foto_perfil as repartidor_foto
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
-      LEFT JOIN usuarios u_cli ON m.usuario_id = u_cli.usuario_id
       LEFT JOIN usuarios u_rep ON m.repartidor_id = u_rep.usuario_id
       WHERE ${compraId ? 'm.compra_id = $1' : 'm.movimiento_id = $1'}
     `;
     
     const result = await pool.query(query, [compraId || id]);
-    
-    // Devolvemos el array completo de productos
-    // NOTA: Para no romper la App actual, podemos devolver un objeto que contenga la lista
-    // o simplemente el primer registro con un campo extra de "resumen"
     res.json(result.rows); 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
