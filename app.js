@@ -315,21 +315,23 @@ app.post('/comentarios', async (req, res) => {
 app.post('/login', async (req, res) => {
   const { correo, password } = req.body;
   try {
+    // Se añadió 'genero' al SELECT
     const result = await pool.query(
-      'SELECT usuario_id, nombre, correo, rol, sucursal_id FROM usuarios WHERE correo = $1 AND password = crypt($2, password)',
+      'SELECT usuario_id, nombre, correo, rol, sucursal_id, genero FROM usuarios WHERE correo = $1 AND password = crypt($2, password)',
       [correo, password]
     );
 
     if (result.rows.length > 0) {
-    res.status(200).json({
+      res.status(200).json({
         mensaje: 'Bienvenido',
         usuario_id: result.rows[0].usuario_id,
         nombre: result.rows[0].nombre,
         correo: result.rows[0].correo,
         rol: result.rows[0].rol,
+        genero: result.rows[0].genero, // <-- Enviamos el género a la App
         sucursal_id: result.rows[0].sucursal_id,
         token: 'token_simulado_123' 
-    });
+      });
     } else {
       res.status(401).json({ mensaje: 'Credenciales inválidas' });
     }
@@ -346,7 +348,7 @@ app.post('/login/google', async (req, res) => {
   try {
     // Buscar si el usuario ya existe por correo
     const result = await pool.query(
-      'SELECT usuario_id, nombre, correo, rol, sucursal_id, activo, foto_perfil FROM usuarios WHERE correo = $1',
+      'SELECT usuario_id, nombre, correo, rol, sucursal_id, activo, foto_perfil, genero FROM usuarios WHERE correo = $1',
       [correo]
     );
 
@@ -366,9 +368,9 @@ app.post('/login/google', async (req, res) => {
       const passwordAleatoria = Math.random().toString(36).slice(-10);
       
       const insertRes = await pool.query(
-        `INSERT INTO usuarios (nombre, correo, rol, activo, foto_perfil, password) 
-         VALUES ($1, $2, $3, $4, $5, crypt($6, gen_salt('bf', 10))) 
-         RETURNING usuario_id, nombre, correo, rol, sucursal_id, activo, foto_perfil`,
+        `INSERT INTO usuarios (nombre, correo, rol, activo, foto_perfil, password, genero) 
+         VALUES ($1, $2, $3, $4, $5, crypt($6, gen_salt('bf', 10)), 'N') 
+         RETURNING usuario_id, nombre, correo, rol, sucursal_id, activo, foto_perfil, genero`,
         [nombre, correo, 'cliente', true, foto_perfil, passwordAleatoria]
       );
       
@@ -383,6 +385,7 @@ app.post('/login/google', async (req, res) => {
       nombre: usuario.nombre,
       correo: usuario.correo,
       rol: usuario.rol,
+      genero: usuario.genero,
       sucursal_id: usuario.sucursal_id,
       foto_perfil: usuario.foto_perfil,
       activo: usuario.activo,
