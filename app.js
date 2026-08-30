@@ -313,11 +313,14 @@ app.post('/comentarios', async (req, res) => {
 
 // Login tradicional
 app.post('/login', async (req, res) => {
-  const { correo, password } = req.body;
+  const { correo, password } = req.body; // 'correo' contiene lo que el usuario escribió (email o alias)
   try {
-    // Se añadió 'genero' al SELECT
+    // Buscamos coincidencia en correo O en usuario
     const result = await pool.query(
-      'SELECT usuario_id, nombre, correo, rol, sucursal_id, genero FROM usuarios WHERE correo = $1 AND password = crypt($2, password)',
+      `SELECT usuario_id, nombre, correo, usuario, rol, sucursal_id, genero 
+       FROM usuarios 
+       WHERE (correo = $1 OR usuario = $1) 
+       AND password = crypt($2, password)`,
       [correo, password]
     );
 
@@ -327,8 +330,9 @@ app.post('/login', async (req, res) => {
         usuario_id: result.rows[0].usuario_id,
         nombre: result.rows[0].nombre,
         correo: result.rows[0].correo,
+        usuario: result.rows[0].usuario,
         rol: result.rows[0].rol,
-        genero: result.rows[0].genero, // <-- Enviamos el género a la App
+        genero: result.rows[0].genero,
         sucursal_id: result.rows[0].sucursal_id,
         token: 'token_simulado_123' 
       });
@@ -405,7 +409,7 @@ app.post('/login/google', async (req, res) => {
 // Registro de Usuario
 app.post('/usuarios', async (req, res) => {
   const { 
-    nombre, correo, telefono, genero, password, rol,
+    nombre, correo, usuario, telefono, genero, password, rol,
     nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda,
     latitud, longitud, foto_perfil, 
     foto_tienda, 
@@ -432,18 +436,19 @@ app.post('/usuarios', async (req, res) => {
       sucursalId = resTienda.rows[0].sucursal_id;
     }
 
-    // Se añadió 'genero' a las columnas y se ajustaron los placeholders de $1 a $21
+    // Se añadió 'usuario' a las columnas y se ajustaron los placeholders de $1 a $22
     await client.query(
       `INSERT INTO usuarios (
-        nombre, correo, telefono, genero, password, rol, sucursal_id, activo,
+        nombre, correo, usuario, telefono, genero, password, rol, sucursal_id, activo,
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
         auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
         vehiculo_tipo, vehiculo_anio, vehiculo_estado, foto_perfil
-      ) VALUES ($1, $2, $3, $4, crypt($5, gen_salt('bf', 10)), $6, $7, true, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+      ) VALUES ($1, $2, $3, $4, $5, crypt($6, gen_salt('bf', 10)), $7, $8, true, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
       [
         nombre, 
         correo, 
+        usuario, // <-- Nuevo campo guardado
         telefono, 
         genero || 'N',
         password, 
@@ -471,7 +476,7 @@ app.post('/usuarios', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error("ERROR REGISTRO:", err.message);
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: 'El nombre de usuario o correo ya existen.' });
   } finally {
     client.release();
   }
