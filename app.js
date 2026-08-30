@@ -124,18 +124,29 @@ app.get('/categorias', async (req, res) => {
 
 // Las sucursales son las tiendas de los vendedores
 app.get('/sucursales', async (req, res) => {
-  const { repartidor_id } = req.query; // Capturamos el parámetro enviado desde Android
+  const { repartidor_id } = req.query;
   try {
-    let query = `
+    const query = `
       SELECT s.*, 
+             COALESCE(rating.promedio_estrellas, 0) as promedio_estrellas,
+             COALESCE(rating.total_resenas, 0) as total_resenas,
              (SELECT estado FROM solicitudes_repartidor 
               WHERE sucursal_id = s.sucursal_id AND repartidor_id = $1 LIMIT 1) as estado_solicitud
       FROM sucursales s 
+      LEFT JOIN (
+        SELECT sucursal_id, 
+               ROUND(AVG(calificacion), 1) as promedio_estrellas,
+               COUNT(*) as total_resenas
+        FROM comentarios
+        GROUP BY sucursal_id
+      ) rating ON s.sucursal_id = rating.sucursal_id
+      WHERE s.activo = true
       ORDER BY s.nombre ASC
     `;
     const result = await pool.query(query, [repartidor_id || null]);
     res.json(result.rows);
   } catch (err) {
+    console.error("ERROR EXPLORAR TIENDAS:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
