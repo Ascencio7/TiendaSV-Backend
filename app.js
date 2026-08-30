@@ -1653,23 +1653,30 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
 app.get('/ventas/:id/seguimiento', async (req, res) => {
   const { id } = req.params;
   try {
+    // 1. Buscamos el ID de la transacción
     const baseReq = await pool.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
     if (baseReq.rows.length === 0) return res.status(404).json({ error: "No encontrado" });
     const compraId = baseReq.rows[0].compra_id;
 
+    // 2. Consulta corregida: Traemos al cliente (u_cli) y al repartidor (u_rep)
     const query = `
       SELECT m.*, p.nombre as producto_nombre, p.precio as precio_unitario,
-             m.tiempo_prometido, -- <--- CAMPO CLAVE
-             u_rep.nombre as repartidor_nombre, u_rep.foto_perfil as repartidor_foto
+             m.tiempo_prometido,
+             u_cli.nombre as usuario_nombre, -- <--- ESTO TRAE EL NOMBRE DEL CLIENTE
+             u_rep.nombre as repartidor_nombre, u_rep.foto_perfil as repartidor_foto,
+             u_rep.telefono as repartidor_telefono, u_rep.tipo_transporte
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
+      LEFT JOIN usuarios u_cli ON m.usuario_id = u_cli.usuario_id
       LEFT JOIN usuarios u_rep ON m.repartidor_id = u_rep.usuario_id
       WHERE ${compraId ? 'm.compra_id = $1' : 'm.movimiento_id = $1'}
     `;
     
     const result = await pool.query(query, [compraId || id]);
     res.json(result.rows); 
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 
