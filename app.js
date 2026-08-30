@@ -370,7 +370,7 @@ app.get('/usuarios/:usuario_id/tarjetas', async (req, res) => {
   const { usuario_id } = req.params;
   try {
     const result = await pool.query(
-      'SELECT id, usuario_id, numero_enmascarado, nombre_titular, mes_expiracion, anio_expiracion, tipo FROM tarjetas WHERE usuario_id = $1 ORDER BY id DESC',
+      'SELECT id, usuario_id, numero_enmascarado, nombre_titular, mes_expiracion, anio_expiracion, tipo, banco FROM tarjetas WHERE usuario_id = $1 ORDER BY id DESC',
       [usuario_id]
     );
     res.json(result.rows);
@@ -382,20 +382,44 @@ app.get('/usuarios/:usuario_id/tarjetas', async (req, res) => {
 // Agregar nueva tarjeta
 app.post('/usuarios/:usuario_id/tarjetas', async (req, res) => {
   const { usuario_id } = req.params;
-  const { numero, nombre_titular, mes_expiracion, anio_expiracion, tipo } = req.body;
+  const { numero, nombre_titular, mes_expiracion, anio_expiracion, tipo, banco } = req.body;
 
-  // Enmascarar el número (Ej: **** **** **** 1234)
   const numero_enmascarado = `**** **** **** ${numero.slice(-4)}`;
 
   try {
     const result = await pool.query(
-      `INSERT INTO tarjetas (usuario_id, numero_enmascarado, nombre_titular, mes_expiracion, anio_expiracion, tipo) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [usuario_id, numero_enmascarado, nombre_titular, mes_expiracion, anio_expiracion, tipo]
+      `INSERT INTO tarjetas (usuario_id, numero_enmascarado, nombre_titular, mes_expiracion, anio_expiracion, tipo, banco) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [usuario_id, numero_enmascarado, nombre_titular, mes_expiracion, anio_expiracion, tipo, banco]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error("ERROR AL GUARDAR TARJETA:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NUEVO: Editar tarjeta existente
+app.put('/usuarios/:usuario_id/tarjetas/:id', async (req, res) => {
+  const { id } = req.params;
+  const { numero, nombre_titular, mes_expiracion, anio_expiracion, tipo, banco } = req.body;
+
+  try {
+    let query = `UPDATE tarjetas SET nombre_titular = $1, mes_expiracion = $2, anio_expiracion = $3, banco = $4`;
+    let params = [nombre_titular, mes_expiracion, anio_expiracion, banco];
+
+    // Si el usuario envió un número nuevo, lo enmascaramos y actualizamos
+    if (numero && !numero.includes('*')) {
+      const numero_enmascarado = `**** **** **** ${numero.slice(-4)}`;
+      query += `, numero_enmascarado = $5, tipo = $6 WHERE id = $7`;
+      params.push(numero_enmascarado, tipo, id);
+    } else {
+      query += ` WHERE id = $5`;
+      params.push(id);
+    }
+
+    await pool.query(query, params);
+    res.json({ mensaje: 'Tarjeta actualizada correctamente' });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
