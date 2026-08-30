@@ -313,34 +313,41 @@ app.post('/comentarios', async (req, res) => {
 
 // Login tradicional
 app.post('/login', async (req, res) => {
-  const { correo, password } = req.body; // 'correo' contiene lo que el usuario escribió (email o alias)
+  // Usamos trim() para quitar espacios accidentales al inicio o final
+  const correoOrUser = req.body.correo ? req.body.correo.trim() : '';
+  const { password } = req.body;
+
   try {
-    // Buscamos coincidencia en correo O en usuario
+    // LOWER hace que la búsqueda no dependa de mayúsculas o minúsculas
     const result = await pool.query(
-      `SELECT usuario_id, nombre, correo, usuario, rol, sucursal_id, genero 
+      `SELECT usuario_id, nombre, correo, usuario, rol, sucursal_id, genero, activo 
        FROM usuarios 
-       WHERE (correo = $1 OR usuario = $1) 
+       WHERE (LOWER(correo) = LOWER($1) OR LOWER(usuario) = LOWER($1)) 
        AND password = crypt($2, password)`,
-      [correo, password]
+      [correoOrUser, password]
     );
 
     if (result.rows.length > 0) {
+      const user = result.rows[0];
+      
       res.status(200).json({
         mensaje: 'Bienvenido',
-        usuario_id: result.rows[0].usuario_id,
-        nombre: result.rows[0].nombre,
-        correo: result.rows[0].correo,
-        usuario: result.rows[0].usuario,
-        rol: result.rows[0].rol,
-        genero: result.rows[0].genero,
-        sucursal_id: result.rows[0].sucursal_id,
+        usuario_id: user.usuario_id,
+        nombre: user.nombre,
+        correo: user.correo,
+        usuario: user.usuario,
+        rol: user.rol,
+        genero: user.genero, // Aquí enviamos el género (M, F, N)
+        sucursal_id: user.sucursal_id,
+        activo: user.activo,
         token: 'token_simulado_123' 
       });
     } else {
       res.status(401).json({ mensaje: 'Credenciales inválidas' });
     }
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("ERROR LOGIN:", err.message);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
