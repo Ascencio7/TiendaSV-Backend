@@ -304,13 +304,13 @@ app.post('/login/google', async (req, res) => {
 });
 
 
-// Registro de Usuario
+// Registro de Usuario (Actualizado con Género)
 app.post('/usuarios', async (req, res) => {
   const { 
-    nombre, correo, telefono, password, rol,
+    nombre, correo, telefono, genero, password, rol, // <--- Agregado 'genero'
     nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda,
     latitud, longitud, foto_perfil, 
-    foto_tienda, // <--- Nueva variable recibida de Android
+    foto_tienda, 
     tipo_transporte, bici_marca, bici_color, bici_caracteristica,
     auto_marca_id, moto_marca_id, marca_otra,
     vehiculo_modelo, vehiculo_color, vehiculo_placa,
@@ -327,7 +327,6 @@ app.post('/usuarios', async (req, res) => {
     let sucursalId = null;
 
     if (rol === 'vendedor') {
-      // Guardamos la foto en la columna imagen_banner
       const resTienda = await client.query(
         'INSERT INTO sucursales (nombre, direccion, departamento, municipio, latitud, longitud, imagen_banner, activo) VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING sucursal_id',
         [nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda, latitud, longitud, foto_tienda]
@@ -335,20 +334,36 @@ app.post('/usuarios', async (req, res) => {
       sucursalId = resTienda.rows[0].sucursal_id;
     }
 
+    // Se añadió 'genero' a las columnas y se ajustaron los placeholders ($1 a $21)
     await client.query(
       `INSERT INTO usuarios (
-        nombre, correo, telefono, password, rol, sucursal_id, activo,
+        nombre, correo, telefono, genero, password, rol, sucursal_id, activo,
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
         auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
         vehiculo_tipo, vehiculo_anio, vehiculo_estado, foto_perfil
-      ) VALUES ($1, $2, $3, crypt($4, gen_salt('bf', 10)), $5, $6, true, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+      ) VALUES ($1, $2, $3, $4, crypt($5, gen_salt('bf', 10)), $6, $7, true, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
       [
-        nombre, correo, telefono, password, rol || 'cliente', sucursalId,
-        tipo_transporte, bici_marca, bici_color, bici_caracteristica,
-        auto_marca_id, moto_marca_id, marca_otra,
-        vehiculo_modelo, vehiculo_color, vehiculo_placa,
-        vehiculo_tipo, vehiculo_anio, vehiculo_estado,
+        nombre, 
+        correo, 
+        telefono, 
+        genero || 'N',
+        password, 
+        rol || 'cliente', 
+        sucursalId,
+        tipo_transporte, 
+        bici_marca, 
+        bici_color, 
+        bici_caracteristica,
+        auto_marca_id, 
+        moto_marca_id, 
+        marca_otra,
+        vehiculo_modelo, 
+        vehiculo_color, 
+        vehiculo_placa,
+        vehiculo_tipo, 
+        vehiculo_anio, 
+        vehiculo_estado,
         foto_perfil || null
       ]
     );
