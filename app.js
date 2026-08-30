@@ -1707,6 +1707,37 @@ app.get('/productos/mas-vendidos', async (req, res) => {
 });
 
 
+// NUEVO: TIENDAS CON EL MEJOR PRECIO (Promedio de productos más bajo)
+app.get('/sucursales/mejor-precio', async (req, res) => {
+  try {
+    const query = `
+      SELECT s.*, 
+             ROUND(AVG(p.precio), 2) as precio_promedio,
+             COALESCE(rating.promedio_estrellas, 0) as promedio_estrellas,
+             COALESCE(rating.total_resenas, 0) as total_resenas
+      FROM sucursales s
+      JOIN productos p ON s.sucursal_id = p.sucursal_id
+      LEFT JOIN (
+        SELECT sucursal_id, 
+               ROUND(AVG(calificacion), 1) as promedio_estrellas,
+               COUNT(*) as total_resenas
+        FROM comentarios
+        GROUP BY sucursal_id
+      ) rating ON s.sucursal_id = rating.sucursal_id
+      WHERE s.activo = true AND p.activo = true
+      GROUP BY s.sucursal_id, rating.promedio_estrellas, rating.total_resenas
+      ORDER BY precio_promedio ASC
+      LIMIT 10
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("ERROR MEJOR PRECIO:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // CLIENTE: Ver solo pedidos activos de una tienda específica 
 app.get('/ventas/activas', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
