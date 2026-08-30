@@ -2,7 +2,6 @@ import express from 'express';
 import pkg from 'pg';
 import cors from 'cors';
 import dotenv from 'dotenv';
-
 import nodemailer from 'nodemailer';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -34,7 +33,7 @@ pool.connect()
   .catch(err => console.error("❌ Error conectando a Supabase:", err));
 
 
-// CONFIGURACIÓN DE NODEMAILER
+// Configuración de NODEMAILER
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
@@ -46,7 +45,7 @@ const transporter = nodemailer.createTransport({
 });
 
 
-// MÉTODO PARA ENVIAR CORREOS
+// Método para enviar correos
 const enviarCorreoNotificacion = async (destinatario, nombreUsuario, tipoAccion) => {
   let asunto = "";
   let mensaje = "";
@@ -77,7 +76,8 @@ const enviarCorreoNotificacion = async (destinatario, nombreUsuario, tipoAccion)
 
 
 // ENDPOINT DE CHAT ASISTENTE
-// Inicializar Gemini con tu API KEY de las variables de entorno
+
+// Inicializar Gemini con la API KEY de las variables de entorno
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.post('/chat/asistente', async (req, res) => {
@@ -102,7 +102,7 @@ app.post('/chat/asistente', async (req, res) => {
 
 
 
- // Endpoints de TiendaSV - Jonathan Vladimir Ascencio Ramos 
+ // Endpoints generales de TiendaSV - Jonathan Vladimir Ascencio Ramos 
 
 
 
@@ -152,6 +152,96 @@ app.get('/sucursales', async (req, res) => {
 });
 
 
+// Las tiendas con el mejor precio/promedio de productos mas bajos
+app.get('/sucursales/mejor-precio', async (req, res) => {
+  try {
+    const query = `
+      SELECT s.*, 
+             ROUND(AVG(p.precio), 2) as precio_promedio,
+             COALESCE(rating.promedio_estrellas, 0) as promedio_estrellas,
+             COALESCE(rating.total_resenas, 0) as total_resenas
+      FROM sucursales s
+      JOIN productos p ON s.sucursal_id = p.sucursal_id
+      LEFT JOIN (
+        SELECT sucursal_id, 
+               ROUND(AVG(calificacion), 1) as promedio_estrellas,
+               COUNT(*) as total_resenas
+        FROM comentarios
+        GROUP BY sucursal_id
+      ) rating ON s.sucursal_id = rating.sucursal_id
+      WHERE s.activo = true AND p.activo = true
+      GROUP BY s.sucursal_id, rating.promedio_estrellas, rating.total_resenas
+      ORDER BY precio_promedio ASC
+      LIMIT 10
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("ERROR MEJOR PRECIO:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// Los productos más vendidos de la semana y se agrupan por sucursal
+app.get('/sucursales/mas-vendidos', async (req, res) => {
+  try {
+    const query = `
+      SELECT s.*, COUNT(m.movimiento_id) as total_ventas
+      FROM sucursales s
+      JOIN productos p ON s.sucursal_id = p.sucursal_id
+      JOIN movimientos m ON p.producto_id = m.producto_id
+      WHERE m.tipo = 'salida' 
+        AND m.fecha >= NOW() - INTERVAL '7 days'
+        AND s.activo = true
+      GROUP BY s.sucursal_id
+      ORDER BY total_ventas DESC
+      LIMIT 10
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// Las tiendas mejores calificadas
+app.get('/sucursales/mejores-calificadas', async (req, res) => {
+  try {
+    const query = `
+      SELECT s.*, 
+             ROUND(AVG(c.calificacion), 1) as promedio_estrellas,
+             COUNT(c.comentario_id) as total_resenas
+      FROM sucursales s
+      LEFT JOIN comentarios c ON s.sucursal_id = c.sucursal_id
+      WHERE s.activo = true
+      GROUP BY s.sucursal_id
+      HAVING AVG(c.calificacion) >= 4.0
+      ORDER BY promedio_estrellas DESC
+      LIMIT 10
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// Las tiendas con el mejor precio
+app.get('/sucursales/economicas', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM sucursales WHERE activo = true AND rango_precio = 1 ORDER BY nombre ASC LIMIT 10'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 // UBICACIONES
 
@@ -169,7 +259,7 @@ app.get('/departamentos', async (req, res) => {
 
 // MUNICIPIOS
 
-// Obtener municipios (filtrados por departamento si se desea)
+// Obtener los municipios filtrados por departamento si se desea
 app.get('/municipios', async (req, res) => {
   const { departamento_id } = req.query;
   try {
@@ -187,6 +277,9 @@ app.get('/municipios', async (req, res) => {
   }
 });
 
+
+
+// COMENTARIOS DE LOS CLIENTES DE LOS PRODUCTOS COMPRADOS
 
 // Método JS robusto para comentarios
 app.post('/comentarios', async (req, res) => {
@@ -218,7 +311,7 @@ app.post('/comentarios', async (req, res) => {
 
 // INICIO DE SESION
 
-// Login
+// Login tradicional
 app.post('/login', async (req, res) => {
   const { correo, password } = req.body;
   try {
@@ -246,7 +339,7 @@ app.post('/login', async (req, res) => {
 });
 
 
-// Login con Google
+// Login con una cuenta de Google
 app.post('/login/google', async (req, res) => {
   const { nombre, correo, google_id, foto_perfil } = req.body;
   
@@ -260,17 +353,16 @@ app.post('/login/google', async (req, res) => {
     let usuario;
 
     if (result.rows.length > 0) {
-      // El usuario ya existe, lo retornamos
+      // Si el usuario ya existe lo retornamos
       usuario = result.rows[0];
       
-      // Opcional: Actualizar el google_id o la foto si han cambiado
+      // Opcional: Se actualiza el google_id o la foto si han cambiado
       await pool.query(
         'UPDATE usuarios SET foto_perfil = COALESCE($1, foto_perfil) WHERE usuario_id = $2',
         [foto_perfil, usuario.usuario_id]
       );
     } else {
-      // Si no existe, lo registramos como 'cliente' por defecto
-      // Generamos una contraseña aleatoria ya que entrará por Google
+      // Si no existe lo registramos como 'cliente' por defecto y generamos una contraseña aleatoria ya que entrará por Google
       const passwordAleatoria = Math.random().toString(36).slice(-10);
       
       const insertRes = await pool.query(
@@ -304,10 +396,13 @@ app.post('/login/google', async (req, res) => {
 });
 
 
-// Registro de Usuario (Actualizado con Género)
+
+// REGISTRO
+
+// Registro de Usuario
 app.post('/usuarios', async (req, res) => {
   const { 
-    nombre, correo, telefono, genero, password, rol, // <--- Agregado 'genero'
+    nombre, correo, telefono, genero, password, rol,
     nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda,
     latitud, longitud, foto_perfil, 
     foto_tienda, 
@@ -334,7 +429,7 @@ app.post('/usuarios', async (req, res) => {
       sucursalId = resTienda.rows[0].sucursal_id;
     }
 
-    // Se añadió 'genero' a las columnas y se ajustaron los placeholders ($1 a $21)
+    // Se añadió 'genero' a las columnas y se ajustaron los placeholders de $1 a $21
     await client.query(
       `INSERT INTO usuarios (
         nombre, correo, telefono, genero, password, rol, sucursal_id, activo,
@@ -380,6 +475,9 @@ app.post('/usuarios', async (req, res) => {
 });
 
 
+
+// USUARIOS CON TARJETAS
+
 // Obtener tarjetas del usuario
 app.get('/usuarios/:usuario_id/tarjetas', async (req, res) => {
   const { usuario_id } = req.params;
@@ -393,6 +491,7 @@ app.get('/usuarios/:usuario_id/tarjetas', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // Agregar nueva tarjeta
 app.post('/usuarios/:usuario_id/tarjetas', async (req, res) => {
@@ -413,7 +512,8 @@ app.post('/usuarios/:usuario_id/tarjetas', async (req, res) => {
   }
 });
 
-// NUEVO: Editar tarjeta existente
+
+// Editar tarjeta existente
 app.put('/usuarios/:usuario_id/tarjetas/:id', async (req, res) => {
   const { id } = req.params;
   const { numero, nombre_titular, mes_expiracion, anio_expiracion, tipo, banco } = req.body;
@@ -422,7 +522,7 @@ app.put('/usuarios/:usuario_id/tarjetas/:id', async (req, res) => {
     let query = `UPDATE tarjetas SET nombre_titular = $1, mes_expiracion = $2, anio_expiracion = $3, banco = $4`;
     let params = [nombre_titular, mes_expiracion, anio_expiracion, banco];
 
-    // Si el usuario envió un número nuevo, lo enmascaramos y actualizamos
+    // Si el usuario envió un número nuevo lo enmascaramos y actualizamos
     if (numero && !numero.includes('*')) {
       const numero_enmascarado = `**** **** **** ${numero.slice(-4)}`;
       query += `, numero_enmascarado = $5, tipo = $6 WHERE id = $7`;
@@ -439,7 +539,8 @@ app.put('/usuarios/:usuario_id/tarjetas/:id', async (req, res) => {
   }
 });
 
-// Eliminar tarjeta
+
+// Eliminar la tarjeta
 app.delete('/usuarios/:usuario_id/tarjetas/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -451,6 +552,9 @@ app.delete('/usuarios/:usuario_id/tarjetas/:id', async (req, res) => {
 });
 
 
+
+// USUARIOS
+
 app.put('/usuarios/:id', async (req, res) => {
   const { id } = req.params;
   const { nombre, telefono, password, foto_perfil, rol, sucursal_id, nombre_tienda, direccion_tienda, foto_tienda } = req.body;
@@ -459,7 +563,7 @@ app.put('/usuarios/:id', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Actualizar Usuario - Añadimos ::text para que Postgres no se confunda
+    // Añadimos ::text para que Postgres no se confunda
     const resUser = await client.query(
       `UPDATE usuarios SET 
         nombre = $1, telefono = $2, 
@@ -472,7 +576,7 @@ app.put('/usuarios/:id', async (req, res) => {
     // Obtenemos el ID de sucursal de la base de datos si no viene en el body
     const sucursal_id_db = sucursal_id || resUser.rows[0]?.sucursal_id;
 
-    // 2. Si es vendedor, actualizar su tienda
+    // Si es vendedor actualizar su tienda
     if (rol && rol.toLowerCase() === 'vendedor' && sucursal_id_db) {
       await client.query(
         `UPDATE sucursales SET 
@@ -494,8 +598,7 @@ app.put('/usuarios/:id', async (req, res) => {
 });
 
 
-
-// Cliente solicita activación
+// Cliente solicita activación de cuenta suspendida
 app.post('/usuarios/solicitar-activacion', async (req, res) => {
   const { usuario_id, motivo } = req.body;
   try {
@@ -508,7 +611,7 @@ app.post('/usuarios/solicitar-activacion', async (req, res) => {
 });
 
 
-// Endpoint corregido para evitar repetición de nombres y agrupar cantidades
+// Evitar repetición de nombres y agrupar cantidades
 app.get('/usuarios/:usuario_id/comentarios', async (req, res) => {
   const { usuario_id } = req.params;
   const { sucursal_id } = req.query;
@@ -550,6 +653,7 @@ app.get('/usuarios/:usuario_id/comentarios', async (req, res) => {
 });
 
 
+
 // MARCAS DE MOTOS
 
 // Obtener marcas de motos de la base
@@ -577,38 +681,7 @@ app.get('/marcas/autos', async (req, res) => {
 });
 
 
-// Restablecer Contraseña
-// app.put('/usuarios/reset-password', async (req, res) => {
-//   const { correo, nuevaPassword } = req.body;
-
-//   if (!correo || !nuevaPassword) {
-//     return res.status(400).json({ error: 'Faltan datos obligatorios (correo o nuevaPassword)' });
-//   }
-//   try {
-//     await client.query('BEGIN');
-//     const resUser = await client.query(
-//       `UPDATE usuarios SET 
-//         nombre = $1, correo = $2, telefono = $3, 
-//         password = COALESCE(crypt($4, gen_salt('bf', 10)), password), 
-//         foto_perfil = COALESCE($5, foto_perfil), rol = $6, activo = $7,
-//         -- ... otros campos
-//       WHERE usuario_id = $25 RETURNING sucursal_id`,
-//       [ nuevaPassword, correo]
-//     );
-
-//     if (result.rows.length > 0) {
-//       res.status(200).json({ mensaje: 'Contraseña actualizada con éxito' });
-//     } else {
-//       // Si result.rows está vacío es porque el WHERE correo = $2 no encontró coincidencias
-//       res.status(404).json({ error: 'El correo electrónico no está registrado' });
-//     }
-//   } catch (err) {
-//     console.error("ERROR RESET PASSWORD:", err.message);
-//     res.status(500).json({ error: 'Error interno del servidor' });
-//   }
-// });
-
-// Restablecer Contraseña (CORREGIDO PARA QUE FUNCIONE POR CORREO)
+// Restablecer Contraseña con el correo del usuario
 app.put('/usuarios/reset-password', async (req, res) => {
   const { correo, nuevaPassword } = req.body;
 
@@ -629,17 +702,18 @@ app.put('/usuarios/reset-password', async (req, res) => {
       
       // Intentamos enviar el correo de forma asíncrona para no bloquear la respuesta
       enviarCorreoNotificacion(usuario.correo, usuario.nombre, 'reset_password')
-        .catch(emailErr => console.error("⚠️ El usuario cambió su clave pero el correo falló:", emailErr));
+        .catch(emailErr => console.error("El usuario cambió su clave pero el correo falló:", emailErr));
 
       res.status(200).json({ mensaje: 'Contraseña actualizada con éxito' });
     } else {
       res.status(404).json({ error: 'El correo electrónico no está registrado' });
     }
   } catch (err) {
-    console.error("❌ ERROR AL ACTUALIZAR:", err.message);
+    console.error("ERROR AL ACTUALIZAR:", err.message);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
+
 
 
 // VENDEDORES
@@ -680,7 +754,7 @@ app.get('/vendedor/repartidores/:sucursal_id', async (req, res) => {
 });
 
 
-// El Vendedor elimine a un repartidor
+// El vendedor elimine a un repartidor
 app.post('/vendedor/repartidores/eliminar', async (req, res) => {
   const { sucursal_id, repartidor_id } = req.body;
   
@@ -709,7 +783,7 @@ app.post('/vendedor/repartidores/eliminar', async (req, res) => {
     res.status(200).json({ mensaje: 'Repartidor eliminado con éxito' });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR AL ELIMINAR:", err.message); // Esto saldrá en tu consola de Node.js
+    console.error("ERROR AL ELIMINAR:", err.message); // Esto saldrá en la consola de Node.js
     res.status(500).json({ error: err.message });
   } finally { client.release(); }
 });
@@ -724,7 +798,7 @@ app.put('/vendedor/solicitudes/:id', async (req, res) => {
     // Actualizar estado de solicitud
     await client.query('UPDATE solicitudes_repartidor SET estado = $1 WHERE solicitud_id = $2', [estado, req.params.id]);
     
-    // Si se acepta, vinculamos al repartidor a la tienda en la tabla usuarios
+    // Si se acepta vinculamos al repartidor a la tienda en la tabla usuarios
     if (estado === 'aceptado') {
       await client.query('UPDATE usuarios SET sucursal_id = $1 WHERE usuario_id = $2', [sucursal_id, repartidor_id]);
     }
@@ -735,6 +809,7 @@ app.put('/vendedor/solicitudes/:id', async (req, res) => {
 });
 
 
+// Configuración de la tienda para actualizar datos de la tienda
 app.put('/vendedor/configuracion-tienda/:id', async (req, res) => {
   const { id } = req.params; // sucursal_id
   const { nombre, direccion, foto_tienda } = req.body;
@@ -755,6 +830,7 @@ app.put('/vendedor/configuracion-tienda/:id', async (req, res) => {
 });
 
 
+// Configuración de la tienda para actualizar el tiempo de preparación
 app.patch('/vendedor/sucursal/:id/configuracion-tiempo', async (req, res) => {
   const { id } = req.params;
   const { tiempo_preparacion_min } = req.body;
@@ -767,6 +843,46 @@ app.patch('/vendedor/sucursal/:id/configuracion-tiempo', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+
+// Registrar un nuevo pago al repartidor
+app.post('/vendedor/repartidores/pagar', async (req, res) => {
+  const { repartidor_id, sucursal_id, monto, metodo_pago } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Forzamos la fecha sin milisegundos al insertar
+    await client.query(
+      `INSERT INTO pagos_repartidores (repartidor_id, sucursal_id, monto, metodo_pago, fecha) 
+       VALUES ($1, $2, $3, $4, date_trunc('second', timezone('CST', now())))`,
+      [repartidor_id, sucursal_id, monto, metodo_pago]
+    );
+    await client.query('UPDATE usuarios SET salario = $1 WHERE usuario_id = $2', [monto, repartidor_id]);
+    await client.query('COMMIT');
+    res.status(201).json({ mensaje: 'Pago registrado con éxito' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { client.release(); }
+});
+
+
+// Obtener historial con formato de fecha correcto
+app.get('/vendedor/repartidores/pagos/:sucursal_id', async (req, res) => {
+  const { sucursal_id } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT p.pago_id, p.monto, p.metodo_pago, 
+              TO_CHAR(p.fecha, 'DD/MM/YYYY HH:MI AM') as fecha,
+              u.nombre as repartidor_nombre,
+              u.correo as repartidor_correo
+       FROM pagos_repartidores p
+       JOIN usuarios u ON p.repartidor_id = u.usuario_id
+       WHERE p.sucursal_id = $1 ORDER BY p.fecha DESC`, [sucursal_id]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 
@@ -798,6 +914,8 @@ app.get('/repartidor/pedidos', async (req, res) => {
   }
 });
 
+
+// Actualizar estado de un pedido
 app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
   const { id } = req.params;
   const { estado_entrega, repartidor_id } = req.body;
@@ -821,6 +939,7 @@ app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
     res.status(500).json({ error: err.message }); 
   }
 });
+
 
 // Actualizar estado de todo un grupo (Combo) de forma atómica
 app.put('/repartidor/pedidos/grupo/:compra_id/estado', async (req, res) => {
@@ -907,6 +1026,28 @@ app.get('/repartidor/mis-pedidos', async (req, res) => {
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
   }
+});
+
+
+// El repartidor verá sus pagos de la tienda a la cual trabaja
+app.get('/repartidor/mis-pagos/:repartidor_id', async (req, res) => {
+  const { repartidor_id } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT p.*, 
+              TO_CHAR(p.fecha, 'DD/MM/YYYY HH:MI AM') as fecha, 
+              s.nombre as sucursal_nombre,
+              u.nombre as repartidor_nombre,
+              u.correo as repartidor_correo
+       FROM pagos_repartidores p
+       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+       JOIN usuarios u ON p.repartidor_id = u.usuario_id
+       WHERE p.repartidor_id = $1
+       ORDER BY p.fecha DESC`,
+      [repartidor_id]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 
@@ -1209,7 +1350,7 @@ app.get('/admin/stats/sucursales-ubicacion', async (req, res) => {
     const deptoCountRes = await pool.query(deptoCountQuery);
     const munCountRes = await pool.query(munCountQuery, params);
 
-    // Obtener los datos para el gráfico (Normalizados)
+    // Obtener los datos para el gráfico (siendo Normalizados)
     let chartData;
     if (departamento_id && departamento_id !== '0') {
       const res = await pool.query(`
@@ -1350,27 +1491,7 @@ app.delete('/admin/comentarios/:id', async (req, res) => {
 });
 
 
-// --- SISTEMA DE SOPORTE TÉCNICO (FULL) ---
-
-/**
- * 1. ENVIAR MENSAJE (Usuario)
- */
-app.post('/soporte', async (req, res) => {
-  const { usuario_id, mensaje } = req.body;
-  if (!usuario_id || !mensaje) return res.status(400).json({ error: 'Faltan datos' });
-
-  try {
-    await pool.query(
-      "INSERT INTO soporte (usuario_id, mensaje, estado) VALUES ($1, $2, 'pendiente')",
-      [usuario_id, mensaje]
-    );
-    res.status(201).json({ mensaje: 'PETICIÓN ENVIADA CON ÉXITO' });
-  } catch (err) {
-    res.status(500).json({ error: err.message.toUpperCase() });
-  }
-});
-
-// OBTENER MENSAJES PARA EL ADMIN (Corregido con respuesta_admin)
+// El admin obtiene las peticiones
 app.get('/admin/soporte', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -1389,27 +1510,8 @@ app.get('/admin/soporte', async (req, res) => {
   }
 });
 
-// NUEVO: OBTENER PETICIONES DE UN USUARIO ESPECÍFICO (Para el cliente)
-app.get('/soporte/mis-mensajes/:usuario_id', async (req, res) => {
-  const { usuario_id } = req.params;
-  try {
-    const result = await pool.query(`
-      SELECT soporte_id, mensaje, estado, respuesta_admin,
-             TO_CHAR(fecha AT TIME ZONE 'America/El_Salvador', 'DD/MM/YYYY HH12:MI AM') as fecha
-      FROM soporte 
-      WHERE usuario_id = $1
-      ORDER BY fecha DESC
-    `, [usuario_id]);
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message.toUpperCase() });
-  }
-});
 
-/**
- * 3. ACTUALIZAR ESTADO (Admin)
- * Maneja: 'recibida', 'solucionada', 'cancelada'
- */
+// El admin puede actualizar el estado de la petición. Maneja: 'recibida', 'solucionada', 'cancelada'
 app.put('/admin/soporte/:id', async (req, res) => {
   const { id } = req.params;
   const { estado, respuesta_admin } = req.body; // Ahora recibe la respuesta también
@@ -1433,6 +1535,43 @@ app.put('/admin/soporte/:id', async (req, res) => {
   }
 });
 
+
+
+// SOPORTE TÉCNICO
+
+// El usuario envia el mensaje
+app.post('/soporte', async (req, res) => {
+  const { usuario_id, mensaje } = req.body;
+  if (!usuario_id || !mensaje) return res.status(400).json({ error: 'Faltan datos' });
+
+  try {
+    await pool.query(
+      "INSERT INTO soporte (usuario_id, mensaje, estado) VALUES ($1, $2, 'pendiente')",
+      [usuario_id, mensaje]
+    );
+    res.status(201).json({ mensaje: 'PETICIÓN ENVIADA CON ÉXITO' });
+  } catch (err) {
+    res.status(500).json({ error: err.message.toUpperCase() });
+  }
+});
+
+
+// Se obtiene las peticiones de un usuario específico (para el cliente)
+app.get('/soporte/mis-mensajes/:usuario_id', async (req, res) => {
+  const { usuario_id } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT soporte_id, mensaje, estado, respuesta_admin,
+             TO_CHAR(fecha AT TIME ZONE 'America/El_Salvador', 'DD/MM/YYYY HH12:MI AM') as fecha
+      FROM soporte 
+      WHERE usuario_id = $1
+      ORDER BY fecha DESC
+    `, [usuario_id]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message.toUpperCase() });
+  }
+});
 
 
 
@@ -1522,6 +1661,33 @@ app.delete('/productos/:id', async (req, res) => {
 });
 
 
+// Los productos más vendidos de la semana con la información de la tienda
+app.get('/productos/mas-vendidos', async (req, res) => {
+  try {
+    const query = `
+      SELECT p.*, s.nombre as sucursal_nombre, s.imagen_banner as sucursal_foto
+      FROM productos p
+      JOIN (
+        SELECT producto_id, COUNT(*) as total_ventas
+        FROM movimientos
+        WHERE tipo = 'salida' 
+          AND fecha >= NOW() - INTERVAL '7 days'
+        GROUP BY producto_id
+      ) m ON p.producto_id = m.producto_id
+      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      WHERE p.activo = true AND s.activo = true
+      ORDER BY m.total_ventas DESC
+      LIMIT 10
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("ERROR PRODUCTOS TOP:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 // VENTAS
 
@@ -1592,14 +1758,14 @@ app.post('/ventas/multiple', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    // 1. Obtenemos el tiempo de preparación configurado por la tienda
+    // Obtenemos el tiempo de preparación configurado por la tienda
     const sucursalRes = await client.query(
       "SELECT tiempo_preparacion_min FROM sucursales WHERE sucursal_id = $1", 
       [items[0].sucursal_id]
     );
     const prepMin = sucursalRes.rows[0]?.tiempo_preparacion_min || 15;
     
-    // 2. Calculamos el tiempo prometido (Ahora + Preparación + 10 min margen trayecto)
+    // Calculamos el tiempo prometido (Ahora + Preparación + 10 min margen trayecto)
     const tiempoPrometido = Date.now() + (prepMin + 10) * 60000;
 
     for (const item of items) {
@@ -1609,7 +1775,7 @@ app.post('/ventas/multiple', async (req, res) => {
 
       await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [item.cantidad, item.producto_id]);
       
-      // 3. Insertamos el tiempo_prometido en el movimiento
+      // Insertamos el tiempo_prometido en el movimiento
       await client.query(
         `INSERT INTO movimientos 
         (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id, tiempo_prometido) 
@@ -1632,8 +1798,7 @@ app.post('/ventas/multiple', async (req, res) => {
 });
 
 
-
-// Procesar decisión: Aceptar o Declinar cancelación del pedido
+// Procesar la decisión: Aceptar o Declinar cancelación del pedido cuando el cliente lo solicita
 app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
   const { id } = req.params;
   const { accion } = req.body; 
@@ -1660,7 +1825,7 @@ app.put('/ventas/:id/detalles', async (req, res) => {
   const { direccion_entrega, telefono_contacto, cantidad, total } = req.body;
   
   try {
-    // IMPORTANTE: Al actualizar 'cantidad', el TRIGGER de la base de datos se activa solo.
+    // IMPORTANTE: Al actualizar 'cantidad' el TRIGGER de la base de datos se activa solo.
     const result = await pool.query(
       `UPDATE movimientos 
        SET direccion_entrega = COALESCE($1, direccion_entrega), 
@@ -1681,7 +1846,7 @@ app.put('/ventas/:id/detalles', async (req, res) => {
 });
 
 
-// Solicitar cancelación al repartidor: Si está 'En Camino'
+// Solicitar cancelación al repartidor: Si SOLO está 'En Camino'
 app.post('/ventas/:id/solicitar-cancelacion', async (req, res) => {
   const { id } = req.params;
   const { motivo } = req.body;
@@ -1710,52 +1875,16 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
   finally { client.release(); }
 });
 
-
-// app.get('/ventas/:id/seguimiento', async (req, res) => {
-//   const { id } = req.params;
-//   try {
-//     // 1. Primero obtenemos el compra_id de ese movimiento
-//     const baseReq = await pool.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
-    
-//     if (baseReq.rows.length === 0) return res.status(404).json({ error: "No encontrado" });
-//     const compraId = baseReq.rows[0].compra_id;
-
-//     // 2. Si tiene compra_id, buscamos TODOS los productos de esa misma transacción
-//     // Si no tiene (ventas antiguas), solo buscamos el ID individual
-//     const query = `
-//       SELECT m.*, p.nombre as producto_nombre, 
-//              p.precio as precio_unitario,
-//              (m.cantidad * p.precio) as total,
-//              u_cli.nombre as usuario_nombre,
-//              u_rep.nombre as repartidor_nombre, u_rep.telefono as repartidor_telefono, 
-//              u_rep.correo as repartidor_correo, u_rep.foto_perfil as repartidor_foto, 
-//              u_rep.tipo_transporte
-//       FROM movimientos m
-//       JOIN productos p ON m.producto_id = p.producto_id
-//       LEFT JOIN usuarios u_cli ON m.usuario_id = u_cli.usuario_id
-//       LEFT JOIN usuarios u_rep ON m.repartidor_id = u_rep.usuario_id
-//       WHERE ${compraId ? 'm.compra_id = $1' : 'm.movimiento_id = $1'}
-//     `;
-    
-//     const result = await pool.query(query, [compraId || id]);
-    
-//     // Devolvemos el array completo de productos
-//     // NOTA: Para no romper la App actual, podemos devolver un objeto que contenga la lista
-//     // o simplemente el primer registro con un campo extra de "resumen"
-//     res.json(result.rows); 
-//   } catch (err) { res.status(500).json({ error: err.message }); }
-// });
-
-
+// Se obtiene el detalle de la venta para el repartidor
 app.get('/ventas/:id/seguimiento', async (req, res) => {
   const { id } = req.params;
   try {
-    // 1. Buscamos el ID de la transacción
+    // Buscamos el ID de la transacción
     const baseReq = await pool.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
     if (baseReq.rows.length === 0) return res.status(404).json({ error: "No encontrado" });
     const compraId = baseReq.rows[0].compra_id;
 
-    // 2. Consulta corregida: Traemos al cliente (u_cli) y al repartidor (u_rep)
+    // Consulta corregida: Traemos al cliente (u_cli) y al repartidor (u_rep)
     const query = `
       SELECT m.*, p.nombre as producto_nombre, p.precio as precio_unitario,
              m.tiempo_prometido,
@@ -1777,65 +1906,7 @@ app.get('/ventas/:id/seguimiento', async (req, res) => {
 });
 
 
-// NUEVO: LOS PRODUCTOS MÁS VENDIDOS DE LA SEMANA (CON INFO DE TIENDA)
-app.get('/productos/mas-vendidos', async (req, res) => {
-  try {
-    const query = `
-      SELECT p.*, s.nombre as sucursal_nombre, s.imagen_banner as sucursal_foto
-      FROM productos p
-      JOIN (
-        SELECT producto_id, COUNT(*) as total_ventas
-        FROM movimientos
-        WHERE tipo = 'salida' 
-          AND fecha >= NOW() - INTERVAL '7 days'
-        GROUP BY producto_id
-      ) m ON p.producto_id = m.producto_id
-      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      WHERE p.activo = true AND s.activo = true
-      ORDER BY m.total_ventas DESC
-      LIMIT 10
-    `;
-    const result = await pool.query(query);
-    res.json(result.rows);
-  } catch (err) {
-    console.error("ERROR PRODUCTOS TOP:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// NUEVO: TIENDAS CON EL MEJOR PRECIO (Promedio de productos más bajo)
-app.get('/sucursales/mejor-precio', async (req, res) => {
-  try {
-    const query = `
-      SELECT s.*, 
-             ROUND(AVG(p.precio), 2) as precio_promedio,
-             COALESCE(rating.promedio_estrellas, 0) as promedio_estrellas,
-             COALESCE(rating.total_resenas, 0) as total_resenas
-      FROM sucursales s
-      JOIN productos p ON s.sucursal_id = p.sucursal_id
-      LEFT JOIN (
-        SELECT sucursal_id, 
-               ROUND(AVG(calificacion), 1) as promedio_estrellas,
-               COUNT(*) as total_resenas
-        FROM comentarios
-        GROUP BY sucursal_id
-      ) rating ON s.sucursal_id = rating.sucursal_id
-      WHERE s.activo = true AND p.activo = true
-      GROUP BY s.sucursal_id, rating.promedio_estrellas, rating.total_resenas
-      ORDER BY precio_promedio ASC
-      LIMIT 10
-    `;
-    const result = await pool.query(query);
-    res.json(result.rows);
-  } catch (err) {
-    console.error("ERROR MEJOR PRECIO:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// CLIENTE: Ver solo pedidos activos de una tienda específica 
+// El cliente vera solo pedidos activos de una tienda específica si tiene otros pedidos en otras tiendas
 app.get('/ventas/activas', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
@@ -1920,67 +1991,7 @@ app.post('/carrito/sync', async (req, res) => {
 
 
 
-// --- PAGOS A REPARTIDORES ---
-
-// Registrar un nuevo pago (Backend)
-app.post('/vendedor/repartidores/pagar', async (req, res) => {
-  const { repartidor_id, sucursal_id, monto, metodo_pago } = req.body;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    // Forzamos la fecha sin milisegundos al insertar
-    await client.query(
-      `INSERT INTO pagos_repartidores (repartidor_id, sucursal_id, monto, metodo_pago, fecha) 
-       VALUES ($1, $2, $3, $4, date_trunc('second', timezone('CST', now())))`,
-      [repartidor_id, sucursal_id, monto, metodo_pago]
-    );
-    await client.query('UPDATE usuarios SET salario = $1 WHERE usuario_id = $2', [monto, repartidor_id]);
-    await client.query('COMMIT');
-    res.status(201).json({ mensaje: 'Pago registrado con éxito' });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
-  } finally { client.release(); }
-});
-
-// Obtener historial con formato de fecha correcto
-app.get('/vendedor/repartidores/pagos/:sucursal_id', async (req, res) => {
-  const { sucursal_id } = req.params;
-  try {
-    const result = await pool.query(
-      `SELECT p.pago_id, p.monto, p.metodo_pago, 
-              TO_CHAR(p.fecha, 'DD/MM/YYYY HH:MI AM') as fecha,
-              u.nombre as repartidor_nombre,
-              u.correo as repartidor_correo
-       FROM pagos_repartidores p
-       JOIN usuarios u ON p.repartidor_id = u.usuario_id
-       WHERE p.sucursal_id = $1 ORDER BY p.fecha DESC`, [sucursal_id]
-    );
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-
-app.get('/repartidor/mis-pagos/:repartidor_id', async (req, res) => {
-  const { repartidor_id } = req.params;
-  try {
-    const result = await pool.query(
-      `SELECT p.*, 
-              TO_CHAR(p.fecha, 'DD/MM/YYYY HH:MI AM') as fecha, 
-              s.nombre as sucursal_nombre,
-              u.nombre as repartidor_nombre,
-              u.correo as repartidor_correo
-       FROM pagos_repartidores p
-       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-       JOIN usuarios u ON p.repartidor_id = u.usuario_id
-       WHERE p.repartidor_id = $1
-       ORDER BY p.fecha DESC`,
-      [repartidor_id]
-    );
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
+// CAJA DEL VENDEDOR
 
 // Abrir caja (Registrar el monto inicial de efectivo)
 app.post('/caja/apertura', async (req, res) => {
@@ -1998,7 +2009,7 @@ app.post('/caja/apertura', async (req, res) => {
 });
 
 
-// Obtener estado actual y EFECTIVO TOTAL (Para el POS)
+// Obtener estado actual y el efectivo total (Para el POS)
 app.get('/caja/estado/:vendedor_id', async (req, res) => {
   try {
     // Buscamos la caja abierta
@@ -2037,6 +2048,7 @@ app.get('/caja/estado/:vendedor_id', async (req, res) => {
   }
 });
 
+
 // Cerrar Caja con registro de ventas final
 app.put('/caja/cierre/:caja_id', async (req, res) => {
   const { monto_cierre, ventas_efectivo } = req.body;
@@ -2056,7 +2068,8 @@ app.put('/caja/cierre/:caja_id', async (req, res) => {
   }
 });
 
-// Endpoint del Historial con corrección de zona horaria para El Salvador
+
+// Historial con corrección de zona horaria para El Salvador
 app.get('/caja/historial/:vendedor_id', async (req, res) => {
   const { fecha } = req.query;
   try {
@@ -2091,6 +2104,7 @@ app.get('/caja/historial/:vendedor_id', async (req, res) => {
   }
 });
 
+
 // Reporte General de Caja (Estadísticas rápidas)
 app.get('/caja/reporte-resumen/:vendedor_id', async (req, res) => {
   try {
@@ -2104,69 +2118,6 @@ app.get('/caja/reporte-resumen/:vendedor_id', async (req, res) => {
       [req.params.vendedor_id]
     );
     res.json(result.rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-
-// --- ENDPOINTS DE DESCUBRIMIENTO (ESTILO PEDIDOSYA) ---
-
-// 1. LOS MÁS VENDIDOS DE LA SEMANA
-// Filtra movimientos de salida de los últimos 7 días y agrupa por sucursal
-app.get('/sucursales/mas-vendidos', async (req, res) => {
-  try {
-    const query = `
-      SELECT s.*, COUNT(m.movimiento_id) as total_ventas
-      FROM sucursales s
-      JOIN productos p ON s.sucursal_id = p.sucursal_id
-      JOIN movimientos m ON p.producto_id = m.producto_id
-      WHERE m.tipo = 'salida' 
-        AND m.fecha >= NOW() - INTERVAL '7 days'
-        AND s.activo = true
-      GROUP BY s.sucursal_id
-      ORDER BY total_ventas DESC
-      LIMIT 10
-    `;
-    const result = await pool.query(query);
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 2. LOS MEJORES CALIFICADOS
-// Calcula el promedio de estrellas de la tabla comentarios
-app.get('/sucursales/mejores-calificadas', async (req, res) => {
-  try {
-    const query = `
-      SELECT s.*, 
-             ROUND(AVG(c.calificacion), 1) as promedio_estrellas,
-             COUNT(c.comentario_id) as total_resenas
-      FROM sucursales s
-      LEFT JOIN comentarios c ON s.sucursal_id = c.sucursal_id
-      WHERE s.activo = true
-      GROUP BY s.sucursal_id
-      HAVING AVG(c.calificacion) >= 4.0
-      ORDER BY promedio_estrellas DESC
-      LIMIT 10
-    `;
-    const result = await pool.query(query);
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 3. TIENDAS CON MEJOR PRECIO (ECONÓMICAS)
-// Filtra por el nuevo campo rango_precio = 1
-app.get('/sucursales/economicas', async (req, res) => {
-  try {
-    const result = await pool.query(
-      'SELECT * FROM sucursales WHERE activo = true AND rango_precio = 1 ORDER BY nombre ASC LIMIT 10'
-    );
-    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
