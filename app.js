@@ -313,12 +313,11 @@ app.post('/comentarios', async (req, res) => {
 
 // Login tradicional
 app.post('/login', async (req, res) => {
-  // Usamos trim() para quitar espacios accidentales al inicio o final
   const correoOrUser = req.body.correo ? req.body.correo.trim() : '';
   const { password } = req.body;
 
   try {
-    // LOWER hace que la búsqueda no dependa de mayúsculas o minúsculas
+    // BUSCA EN AMBAS COLUMNAS: correo Y usuario
     const result = await pool.query(
       `SELECT usuario_id, nombre, correo, usuario, rol, sucursal_id, genero, activo 
        FROM usuarios 
@@ -329,7 +328,6 @@ app.post('/login', async (req, res) => {
 
     if (result.rows.length > 0) {
       const user = result.rows[0];
-      
       res.status(200).json({
         mensaje: 'Bienvenido',
         usuario_id: user.usuario_id,
@@ -337,13 +335,13 @@ app.post('/login', async (req, res) => {
         correo: user.correo,
         usuario: user.usuario,
         rol: user.rol,
-        genero: user.genero, // Aquí enviamos el género (M, F, N)
+        genero: user.genero,
         sucursal_id: user.sucursal_id,
         activo: user.activo,
         token: 'token_simulado_123' 
       });
     } else {
-      res.status(401).json({ mensaje: 'Credenciales inválidas' });
+      res.status(401).json({ mensaje: 'Correo/Usuario o contraseña incorrectos' });
     }
   } catch (err) {
     console.error("ERROR LOGIN:", err.message);
@@ -443,7 +441,7 @@ app.post('/usuarios', async (req, res) => {
       sucursalId = resTienda.rows[0].sucursal_id;
     }
 
-    // Se añadió 'usuario' a las columnas y se ajustaron los placeholders de $1 a $22
+    // AÑADIDO $22 AL FINAL Y LIMPIEZA DE ESPACIOS
     await client.query(
       `INSERT INTO usuarios (
         nombre, correo, usuario, telefono, genero, password, rol, sucursal_id, activo,
@@ -454,8 +452,8 @@ app.post('/usuarios', async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, crypt($6, gen_salt('bf', 10)), $7, $8, true, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
       [
         nombre, 
-        correo, 
-        usuario, // <-- Nuevo campo guardado
+        correo.trim().toLowerCase(), 
+        usuario.trim(), // Nombre de usuario limpio
         telefono, 
         genero || 'N',
         password, 
