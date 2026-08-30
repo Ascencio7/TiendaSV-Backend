@@ -1680,6 +1680,33 @@ app.get('/ventas/:id/seguimiento', async (req, res) => {
 });
 
 
+// NUEVO: LOS PRODUCTOS MÁS VENDIDOS DE LA SEMANA (CON INFO DE TIENDA)
+app.get('/productos/mas-vendidos', async (req, res) => {
+  try {
+    const query = `
+      SELECT p.*, s.nombre as sucursal_nombre, s.imagen_banner as sucursal_foto
+      FROM productos p
+      JOIN (
+        SELECT producto_id, COUNT(*) as total_ventas
+        FROM movimientos
+        WHERE tipo = 'salida' 
+          AND fecha >= NOW() - INTERVAL '7 days'
+        GROUP BY producto_id
+      ) m ON p.producto_id = m.producto_id
+      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      WHERE p.activo = true AND s.activo = true
+      ORDER BY m.total_ventas DESC
+      LIMIT 10
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("ERROR PRODUCTOS TOP:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // CLIENTE: Ver solo pedidos activos de una tienda específica 
 app.get('/ventas/activas', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
