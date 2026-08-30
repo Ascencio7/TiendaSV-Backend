@@ -313,17 +313,17 @@ app.post('/comentarios', async (req, res) => {
 
 // Login tradicional
 app.post('/login', async (req, res) => {
-  const correoOrUser = req.body.correo ? req.body.correo.trim() : '';
+  const identifier = req.body.correo ? req.body.correo.trim() : '';
   const { password } = req.body;
 
   try {
-    // BUSCA EN AMBAS COLUMNAS: correo Y usuario
+    // Buscamos en las columnas 'correo' o 'nombre'
     const result = await pool.query(
-      `SELECT usuario_id, nombre, correo, usuario, rol, sucursal_id, genero, activo 
+      `SELECT usuario_id, nombre, correo, rol, sucursal_id, genero, activo 
        FROM usuarios 
-       WHERE (LOWER(correo) = LOWER($1) OR LOWER(usuario) = LOWER($1)) 
+       WHERE (LOWER(correo) = LOWER($1) OR LOWER(nombre) = LOWER($1)) 
        AND password = crypt($2, password)`,
-      [correoOrUser, password]
+      [identifier, password]
     );
 
     if (result.rows.length > 0) {
@@ -333,7 +333,6 @@ app.post('/login', async (req, res) => {
         usuario_id: user.usuario_id,
         nombre: user.nombre,
         correo: user.correo,
-        usuario: user.usuario,
         rol: user.rol,
         genero: user.genero,
         sucursal_id: user.sucursal_id,
@@ -341,7 +340,7 @@ app.post('/login', async (req, res) => {
         token: 'token_simulado_123' 
       });
     } else {
-      res.status(401).json({ mensaje: 'Correo/Usuario o contraseña incorrectos' });
+      res.status(401).json({ mensaje: 'Credenciales inválidas' });
     }
   } catch (err) {
     console.error("ERROR LOGIN:", err.message);
@@ -414,7 +413,7 @@ app.post('/login/google', async (req, res) => {
 // Registro de Usuario
 app.post('/usuarios', async (req, res) => {
   const { 
-    nombre, correo, usuario, telefono, genero, password, rol,
+    nombre, correo, telefono, genero, password, rol,
     nombre_tienda, direccion_tienda, departamento_tienda, municipio_tienda,
     latitud, longitud, foto_perfil, 
     foto_tienda, 
@@ -441,19 +440,17 @@ app.post('/usuarios', async (req, res) => {
       sucursalId = resTienda.rows[0].sucursal_id;
     }
 
-    // AÑADIDO $22 AL FINAL Y LIMPIEZA DE ESPACIOS
     await client.query(
       `INSERT INTO usuarios (
-        nombre, correo, usuario, telefono, genero, password, rol, sucursal_id, activo,
+        nombre, correo, telefono, genero, password, rol, sucursal_id, activo,
         tipo_transporte, bici_marca, bici_color, bici_caracteristica,
         auto_marca_id, moto_marca_id, marca_otra,
         vehiculo_modelo, vehiculo_color, vehiculo_placa,
         vehiculo_tipo, vehiculo_anio, vehiculo_estado, foto_perfil
-      ) VALUES ($1, $2, $3, $4, $5, crypt($6, gen_salt('bf', 10)), $7, $8, true, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+      ) VALUES ($1, $2, $3, $4, crypt($5, gen_salt('bf', 10)), $6, $7, true, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
       [
-        nombre, 
+        nombre.trim(), 
         correo.trim().toLowerCase(), 
-        usuario.trim(), // Nombre de usuario limpio
         telefono, 
         genero || 'N',
         password, 
@@ -481,7 +478,7 @@ app.post('/usuarios', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error("ERROR REGISTRO:", err.message);
-    res.status(400).json({ error: 'El nombre de usuario o correo ya existen.' });
+    res.status(400).json({ error: 'El nombre o correo ya están registrados.' });
   } finally {
     client.release();
   }
