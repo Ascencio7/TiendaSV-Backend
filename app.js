@@ -365,6 +365,53 @@ app.post('/usuarios', async (req, res) => {
 });
 
 
+// Obtener tarjetas del usuario
+app.get('/usuarios/:usuario_id/tarjetas', async (req, res) => {
+  const { usuario_id } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT id, usuario_id, numero_enmascarado, nombre_titular, mes_expiracion, anio_expiracion, tipo FROM tarjetas WHERE usuario_id = $1 ORDER BY id DESC',
+      [usuario_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Agregar nueva tarjeta
+app.post('/usuarios/:usuario_id/tarjetas', async (req, res) => {
+  const { usuario_id } = req.params;
+  const { numero, nombre_titular, mes_expiracion, anio_expiracion, tipo } = req.body;
+
+  // Enmascarar el número (Ej: **** **** **** 1234)
+  const numero_enmascarado = `**** **** **** ${numero.slice(-4)}`;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO tarjetas (usuario_id, numero_enmascarado, nombre_titular, mes_expiracion, anio_expiracion, tipo) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [usuario_id, numero_enmascarado, nombre_titular, mes_expiracion, anio_expiracion, tipo]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("ERROR AL GUARDAR TARJETA:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Eliminar tarjeta
+app.delete('/usuarios/:usuario_id/tarjetas/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM tarjetas WHERE id = $1', [id]);
+    res.status(200).json({ mensaje: 'Tarjeta eliminada' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 app.put('/usuarios/:id', async (req, res) => {
   const { id } = req.params;
   const { nombre, telefono, password, foto_perfil, rol, sucursal_id, nombre_tienda, direccion_tienda, foto_tienda } = req.body;
