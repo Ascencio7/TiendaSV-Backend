@@ -663,6 +663,115 @@ app.get('/usuarios/:usuario_id/comentarios', async (req, res) => {
 });
 
 
+// DIRECCIONES DE USUARIO
+
+// Obtener todas las direcciones de un usuario
+app.get('/usuarios/:usuario_id/direcciones', async (req, res) => {
+  const { usuario_id } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM direcciones_usuario WHERE usuario_id = $1 ORDER BY es_principal DESC, id DESC',
+      [usuario_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// Agregar una nueva dirección
+app.post('/usuarios/:usuario_id/direcciones', async (req, res) => {
+  const { usuario_id } = req.params;
+  const { nombre, direccion, latitud, longitud, referencia, es_principal } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Si esta será la principal, quitamos el check a las demás
+    if (es_principal) {
+      await client.query('UPDATE direcciones_usuario SET es_principal = false WHERE usuario_id = $1', [usuario_id]);
+    }
+
+    const result = await client.query(
+      `INSERT INTO direcciones_usuario (usuario_id, nombre, direccion, latitud, longitud, referencia, es_principal) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [usuario_id, nombre, direccion, latitud, longitud, referencia, es_principal || false]
+    );
+    
+    await client.query('COMMIT');
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+
+// Actualizar una dirección existente
+app.put('/usuarios/:usuario_id/direcciones/:id', async (req, res) => {
+  const { usuario_id, id } = req.params;
+  const { nombre, direccion, latitud, longitud, referencia, es_principal } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    if (es_principal) {
+      await client.query('UPDATE direcciones_usuario SET es_principal = false WHERE usuario_id = $1', [usuario_id]);
+    }
+
+    const result = await client.query(
+      `UPDATE direcciones_usuario SET 
+        nombre = $1, direccion = $2, latitud = $3, longitud = $4, referencia = $5, es_principal = $6 
+       WHERE id = $7 AND usuario_id = $8 RETURNING *`,
+      [nombre, direccion, latitud, longitud, referencia, es_principal, id, usuario_id]
+    );
+
+    await client.query('COMMIT');
+    res.json(result.rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+
+// Eliminar una dirección
+app.delete('/usuarios/:usuario_id/direcciones/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM direcciones_usuario WHERE id = $1', [id]);
+    res.status(200).json({ mensaje: 'Dirección eliminada' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// Establecer una dirección como principal/favorita
+app.patch('/usuarios/:usuario_id/direcciones/:id/principal', async (req, res) => {
+  const { usuario_id, id } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE direcciones_usuario SET es_principal = false WHERE usuario_id = $1', [usuario_id]);
+    await client.query('UPDATE direcciones_usuario SET es_principal = true WHERE id = $2 AND usuario_id = $1', [usuario_id, id]);
+    await client.query('COMMIT');
+    res.json({ mensaje: 'Dirección principal actualizada' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 
 // MARCAS DE MOTOS
 
