@@ -1959,7 +1959,28 @@ app.put('/ventas/:id/detalles', async (req, res) => {
   const { direccion_entrega, telefono_contacto, cantidad, total } = req.body;
   
   try {
-    // IMPORTANTE: Al actualizar 'cantidad' el TRIGGER de la base de datos se activa solo.
+    // Si la cantidad es 0, el cliente quiere eliminar este producto del pedido
+    if (cantidad === 0) {
+      // 1. Buscamos qué producto es y cuánto tenía para devolver el stock
+      const mov = await pool.query("SELECT producto_id, cantidad FROM movimientos WHERE movimiento_id = $1", [id]);
+      
+      if (mov.rows.length > 0) {
+        await pool.query(
+          "UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", 
+          [mov.rows[0].cantidad, mov.rows[0].producto_id]
+        );
+      }
+
+      // Eliminamos el registro del pedido (movimiento)
+      await pool.query(
+        "DELETE FROM movimientos WHERE movimiento_id = $1 AND estado_entrega = 'Pendiente'", 
+        [id]
+      );
+      
+      return res.json({ mensaje: "Producto eliminado del pedido y stock devuelto" });
+    }
+
+    // LÓGICA DE ACTUALIZACIÓN (Si cantidad > 0)
     const result = await pool.query(
       `UPDATE movimientos 
        SET direccion_entrega = COALESCE($1, direccion_entrega), 
@@ -1971,8 +1992,11 @@ app.put('/ventas/:id/detalles', async (req, res) => {
       [direccion_entrega, telefono_contacto, cantidad, total, id]
     );
 
-    if (result.rowCount > 0) res.json(result.rows[0]);
-    else res.status(400).json({ error: "No se puede editar: el pedido ya no está Pendiente" });
+    if (result.rowCount > 0) {
+      res.json(result.rows[0]);
+    } else {
+      res.status(400).json({ error: "No se puede editar: el pedido ya no está Pendiente" });
+    }
   } catch (err) {
     console.error("ERROR EDICIÓN:", err.message);
     res.status(500).json({ error: err.message });
