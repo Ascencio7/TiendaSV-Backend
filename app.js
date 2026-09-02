@@ -1476,14 +1476,20 @@ app.put('/admin/solicitudes-activacion/:id', async (req, res) => {
       'UPDATE solicitudes_activacion SET estado = $1, mensaje_admin = $2, fecha_resolucion = NOW() WHERE solicitud_id = $3',
       [estado, mensaje_admin, id]
     );
-    // Si se acepta, activar al usuario
-    if (estado === 'aceptada') {
+    
+    // Si se acepta (maneja ambos términos), activar al usuario
+    if (estado === 'aceptada' || estado === 'aceptado') {
       await client.query('UPDATE usuarios SET activo = true WHERE usuario_id = $1', [usuario_id]);
     }
+    
     await client.query('COMMIT');
-    res.json({ mensaje: `Cuenta ${estado === 'aceptada' ? 'activada' : 'rechazada'}` });
-  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
-  finally { client.release(); }
+    res.json({ mensaje: `Cuenta ${(estado === 'aceptada' || estado === 'aceptado') ? 'activada' : 'rechazada'}` });
+  } catch (err) { 
+    await client.query('ROLLBACK'); 
+    res.status(500).json({ error: err.message }); 
+  } finally { 
+    client.release(); 
+  }
 });
 
 
@@ -1725,6 +1731,7 @@ app.post('/ventas', async (req, res) => {
 
 
 // Historial de ventas
+// Historial de ventas
 app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
@@ -1734,7 +1741,16 @@ app.get('/ventas/historial', async (req, res) => {
         MAX(m.movimiento_id) as movimiento_id,
         MAX(p.producto_id) as producto_id,
         MAX(p.sucursal_id) as sucursal_id,
-        STRING_AGG(p.nombre || ' (x' || m.cantidad || ')', ', ') as producto_nombre,
+        -- Subconsulta mejorada para agrupar productos por nombre y sumar cantidades
+        (SELECT STRING_AGG(p2.nombre || ' (x' || sub.total_cant || ')', ', ')
+         FROM (
+           SELECT m2.producto_id, SUM(m2.cantidad) as total_cant
+           FROM movimientos m2
+           WHERE m2.compra_id = m.compra_id
+           GROUP BY m2.producto_id
+         ) sub
+         JOIN productos p2 ON sub.producto_id = p2.producto_id
+        ) as producto_nombre,
         SUM(m.cantidad) as cantidad,
         SUM(m.cantidad * p.precio) as total,
         SUM(m.cantidad * (p.precio - COALESCE(p.costo, 0))) as ganancia_neta,
@@ -1747,7 +1763,6 @@ app.get('/ventas/historial', async (req, res) => {
       WHERE m.tipo = 'salida' 
       AND (m.usuario_id = $1 OR $1 IS NULL)
       AND (p.sucursal_id = $2 OR $2 IS NULL)
-      -- LÓGICA VITAL: Solo mostrar si ya se entregó o si fue venta física (no domicilio)
       AND (m.entrega_domicilio = false OR m.estado_entrega = 'Entregado')
       GROUP BY m.compra_id, m.fecha
       ORDER BY fecha DESC
