@@ -1561,7 +1561,7 @@ app.get('/admin/solicitudes-activacion', async (req, res) => {
         u.foto_perfil
       FROM solicitudes_activacion s
       JOIN usuarios u ON s.usuario_id = u.usuario_id
-      WHERE s.estado IN ('pendiente', 'rechazada')
+      WHERE s.estado IN ('pendiente', 'rechazada', 'aceptada')
       ORDER BY s.fecha_solicitud DESC
     `;
     const result = await pool.query(query);
