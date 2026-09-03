@@ -1063,21 +1063,32 @@ app.put('/repartidor/pedidos/:id/estado', async (req, res) => {
 // Actualizar estado de todo un grupo (Combo) de forma atómica
 app.put('/repartidor/pedidos/grupo/:compra_id/estado', async (req, res) => {
   const { compra_id } = req.params;
-  const { estado_entrega, repartidor_id } = req.body;
+  const { estado_entrega, repartidor_id, motivo_cancelacion } = req.body;
   
   try {
+    // VALIDACIÓN: Verificar si el cliente ya lo canceló
+    const check = await pool.query("SELECT estado_entrega FROM movimientos WHERE compra_id = $1 LIMIT 1", [compra_id]);
+    if (check.rows.length > 0 && check.rows[0].estado_entrega === 'Cancelado') {
+      return res.status(400).json({ error: "EL PEDIDO YA FUE CANCELADO POR EL CLIENTE" });
+    }
+
     let query = "UPDATE movimientos SET estado_entrega = $1";
     let params = [estado_entrega, compra_id];
 
     if (repartidor_id) {
-      query += ", repartidor_id = $3 WHERE compra_id = $2";
+      query += ", repartidor_id = $3";
       params.push(repartidor_id);
-    } else {
-      query += " WHERE compra_id = $2";
+    }
+    
+    if (motivo_cancelacion) {
+        query += ", motivo_cancelacion = $4";
+        params.push(motivo_cancelacion);
     }
 
+    query += " WHERE compra_id = $2";
+
     await pool.query(query, params);
-    res.status(200).json({ mensaje: 'ESTADO DEL COMBO ACTUALIZADO' });
+    res.status(200).json({ mensaje: 'ESTADO DEL GRUPO ACTUALIZADO' });
   } catch (err) {
     res.status(500).json({ error: err.message.toUpperCase() });
   }
@@ -1932,24 +1943,43 @@ app.post('/ventas/multiple', async (req, res) => {
 });
 
 
-// Procesar la decisión: Aceptar o Declinar cancelación del pedido cuando el cliente lo solicita
+// Procesar decisión de cancelación (Aceptar/Declinar o Cancelación directa del repartidor)
 app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
   const { id } = req.params;
-  const { accion } = req.body; 
+  const { accion, motivo } = req.body; 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    if (accion === 'aceptar') {
-      const mov = await client.query("SELECT producto_id, cantidad FROM movimientos WHERE movimiento_id = $1", [id]);
-      await client.query("UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", [mov.rows[0].cantidad, mov.rows[0].producto_id]);
-      await client.query("UPDATE movimientos SET estado_entrega = 'Cancelado', solicitud_cancelacion = false WHERE movimiento_id = $1", [id]);
+
+    // Obtener compra_id
+    const infoRes = await client.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
+    const { compra_id } = infoRes.rows[0];
+
+    if (accion === 'aceptar' || accion === 'cancelar_repartidor') {
+      // Devolver stock de todo el grupo
+      const productos = await client.query("SELECT producto_id, cantidad FROM movimientos WHERE compra_id = $1", [compra_id]);
+      for (const p of productos.rows) {
+        await client.query("UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", [p.cantidad, p.producto_id]);
+      }
+      // Marcar como cancelado
+      const motivoFinal = motivo || (accion === 'aceptar' ? 'Cancelación aceptada por repartidor' : 'Cancelado por repartidor en ruta');
+      await client.query(
+        "UPDATE movimientos SET estado_entrega = 'Cancelado', solicitud_cancelacion = false, motivo_cancelacion = $1 WHERE compra_id = $2", 
+        [motivoFinal, compra_id]
+      );
     } else {
-      await client.query("UPDATE movimientos SET solicitud_cancelacion = false WHERE movimiento_id = $1", [id]);
+      // Declinar: Simplemente quitar la bandera de solicitud
+      await client.query("UPDATE movimientos SET solicitud_cancelacion = false WHERE compra_id = $1", [compra_id]);
     }
+
     await client.query('COMMIT');
-    res.json({ mensaje: "Procesado correctamente" });
-  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
-  finally { client.release(); }
+    res.json({ mensaje: "Procesado correctamente para todo el grupo" });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 
@@ -2018,20 +2048,51 @@ app.post('/ventas/:id/solicitar-cancelacion', async (req, res) => {
 });
 
 
-// Cancelar pedido definitivamente: Devuelve el stock
+// Cancelar pedido definitivamente (Cliente): Cancela todo el grupo y devuelve stock
 app.post('/ventas/:id/cancelar', async (req, res) => {
   const { id } = req.params;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const mov = await client.query("SELECT producto_id, cantidad FROM movimientos WHERE movimiento_id = $1", [id]);
-    await client.query("UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", [mov.rows[0].cantidad, mov.rows[0].producto_id]);
-    await client.query("UPDATE movimientos SET estado_entrega = 'Cancelado' WHERE movimiento_id = $1", [id]);
+
+    // Obtener el compra_id para identificar a todo el grupo
+    const infoRes = await client.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
+    if (infoRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: "Pedido no encontrado" });
+    }
+    const { compra_id } = infoRes.rows[0];
+
+    // Obtener todos los productos del grupo para devolver stock
+    const productosGrupo = await client.query(
+      "SELECT producto_id, cantidad FROM movimientos WHERE compra_id = $1 AND estado_entrega = 'Pendiente'", 
+      [compra_id]
+    );
+
+    for (const item of productosGrupo.rows) {
+      await client.query(
+        "UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", 
+        [item.cantidad, item.producto_id]
+      );
+    }
+
+    // Marcar todo el grupo como Cancelado
+    await client.query(
+      "UPDATE movimientos SET estado_entrega = 'Cancelado', motivo_cancelacion = 'Cancelado por el cliente' WHERE compra_id = $1", 
+      [compra_id]
+    );
+
     await client.query('COMMIT');
-    res.json({ mensaje: "Pedido cancelado con éxito" });
-  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
-  finally { client.release(); }
+    res.json({ mensaje: "Pedido y todos sus productos cancelados con éxito" });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error("ERROR AL CANCELAR GRUPO:", err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
+
 
 // Se obtiene el detalle de la venta para el repartidor
 app.get('/ventas/:id/seguimiento', async (req, res) => {
