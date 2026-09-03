@@ -1950,36 +1950,25 @@ app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    
     const resMov = await client.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
-    const cid = resMov.rows.length > 0 ? resMov.rows[0].compra_id : null;
-    const condition = cid ? "compra_id = $1" : "movimiento_id = $1";
-    const val = cid || id;
+    const { compra_id } = resMov.rows[0];
 
     if (accion === 'aceptar') {
-      // Devolver stock de todos los productos del grupo
-      const productos = await client.query(`SELECT producto_id, cantidad FROM movimientos WHERE ${condition}`, [val]);
+      const productos = await client.query("SELECT producto_id, cantidad FROM movimientos WHERE compra_id = $1", [compra_id]);
       for (const p of productos.rows) {
         await client.query("UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", [p.cantidad, p.producto_id]);
       }
-      // Cancelar todos los productos del grupo
       await client.query(
-        `UPDATE movimientos SET estado_entrega = 'Cancelado', solicitud_cancelacion = false WHERE ${condition}`, 
-        [val]
+        "UPDATE movimientos SET estado_entrega = 'Cancelado', solicitud_cancelacion = false WHERE compra_id = $1", 
+        [compra_id]
       );
     } else {
-      // Solo quitar la bandera de solicitud a todo el grupo
-      await client.query(`UPDATE movimientos SET solicitud_cancelacion = false WHERE ${condition}`, [val]);
+      await client.query("UPDATE movimientos SET solicitud_cancelacion = false WHERE compra_id = $1", [compra_id]);
     }
-
     await client.query('COMMIT');
-    res.json({ mensaje: "Procesado correctamente para todo el pedido" });
-  } catch (err) { 
-    await client.query('ROLLBACK'); 
-    res.status(500).json({ error: err.message }); 
-  } finally { 
-    client.release(); 
-  }
+    res.json({ mensaje: "Procesado para todo el grupo" });
+  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
+  finally { client.release(); }
 });
 
 
@@ -2048,49 +2037,44 @@ app.post('/ventas/:id/solicitar-cancelacion', async (req, res) => {
 });
 
 
-// Cancelar pedido definitivamente (Cliente): Cancela todo el grupo y devuelve stock
+// Ahora busca el compra_id y cancela todo el combo devolviendo el stock de cada item.
 app.post('/ventas/:id/cancelar', async (req, res) => {
   const { id } = req.params;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // 1. Obtener el compra_id para identificar a todo el grupo de productos
+    // Buscamos el compra_id para identificar a todo el grupo de productos
     const infoRes = await client.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
     if (infoRes.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: "Pedido no encontrado" });
     }
-    
-    const cid = infoRes.rows[0].compra_id;
-    // Condición dinámica: Si hay compra_id usamos ese, sino solo el id individual
-    const condition = cid ? "compra_id = $1" : "movimiento_id = $1";
-    const val = cid || id;
+    const { compra_id } = infoRes.rows[0];
 
-    // 2. Devolver stock de todos los productos del grupo que estaban pendientes
-    const productos = await client.query(
-      `SELECT producto_id, cantidad FROM movimientos WHERE ${condition} AND estado_entrega = 'Pendiente'`, 
-      [val]
+    // Devolvemos el stock de TODOS los productos del grupo que estaban pendientes
+    const productosGrupo = await client.query(
+      "SELECT producto_id, cantidad FROM movimientos WHERE compra_id = $1 AND estado_entrega = 'Pendiente'", 
+      [compra_id]
     );
 
-    for (const item of productos.rows) {
+    for (const item of productosGrupo.rows) {
       await client.query(
         "UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", 
         [item.cantidad, item.producto_id]
       );
     }
 
-    // 3. Marcar todo el grupo como Cancelado
+    // Marcamos TODO EL GRUPO como Cancelado
     await client.query(
-      `UPDATE movimientos SET estado_entrega = 'Cancelado', motivo_cancelacion = 'Cancelado por el cliente' WHERE ${condition}`, 
-      [val]
+      "UPDATE movimientos SET estado_entrega = 'Cancelado', motivo_cancelacion = 'Cancelado por el cliente' WHERE compra_id = $1", 
+      [compra_id]
     );
 
     await client.query('COMMIT');
-    res.json({ mensaje: "Pedido y combo cancelados con éxito" });
+    res.json({ mensaje: "Pedido y todos sus productos cancelados con éxito" });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR AL CANCELAR GRUPO:", err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
