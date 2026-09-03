@@ -1943,43 +1943,33 @@ app.post('/ventas/multiple', async (req, res) => {
 });
 
 
-// Procesar decisión de cancelación (Aceptar/Declinar o Cancelación directa del repartidor)
+// Procesar la decisión: Aceptar o Declinar cancelación (Afecta a todo el grupo compra_id)
 app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
   const { id } = req.params;
   const { accion, motivo } = req.body; 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    // Obtener compra_id
-    const infoRes = await client.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
-    const { compra_id } = infoRes.rows[0];
+    const resMov = await client.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
+    const compraId = resMov.rows[0].compra_id;
 
     if (accion === 'aceptar' || accion === 'cancelar_repartidor') {
-      // Devolver stock de todo el grupo
-      const productos = await client.query("SELECT producto_id, cantidad FROM movimientos WHERE compra_id = $1", [compra_id]);
+      const productos = await client.query("SELECT producto_id, cantidad FROM movimientos WHERE compra_id = $1", [compraId]);
       for (const p of productos.rows) {
         await client.query("UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", [p.cantidad, p.producto_id]);
       }
-      // Marcar como cancelado
-      const motivoFinal = motivo || (accion === 'aceptar' ? 'Cancelación aceptada por repartidor' : 'Cancelado por repartidor en ruta');
+      const motivoFinal = motivo || (accion === 'aceptar' ? 'Solicitud aceptada' : 'Cancelado por repartidor');
       await client.query(
         "UPDATE movimientos SET estado_entrega = 'Cancelado', solicitud_cancelacion = false, motivo_cancelacion = $1 WHERE compra_id = $2", 
-        [motivoFinal, compra_id]
+        [motivoFinal, compraId]
       );
     } else {
-      // Declinar: Simplemente quitar la bandera de solicitud
-      await client.query("UPDATE movimientos SET solicitud_cancelacion = false WHERE compra_id = $1", [compra_id]);
+      await client.query("UPDATE movimientos SET solicitud_cancelacion = false WHERE compra_id = $1", [compraId]);
     }
-
     await client.query('COMMIT');
-    res.json({ mensaje: "Procesado correctamente para todo el grupo" });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
+    res.json({ mensaje: "Grupo actualizado" });
+  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
+  finally { client.release(); }
 });
 
 
@@ -2055,7 +2045,7 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Obtener el compra_id para identificar a todo el grupo
+    // Obtenemos el compra_id para identificar a todo el grupo
     const infoRes = await client.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
     if (infoRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -2063,7 +2053,7 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
     }
     const { compra_id } = infoRes.rows[0];
 
-    // Obtener todos los productos del grupo para devolver stock
+    // Devolvemos el stock de cada producto del grupo que estaba pendiente
     const productosGrupo = await client.query(
       "SELECT producto_id, cantidad FROM movimientos WHERE compra_id = $1 AND estado_entrega = 'Pendiente'", 
       [compra_id]
@@ -2076,17 +2066,16 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
       );
     }
 
-    // Marcar todo el grupo como Cancelado
+    // Marcamos TODO EL GRUPO como Cancelado
     await client.query(
       "UPDATE movimientos SET estado_entrega = 'Cancelado', motivo_cancelacion = 'Cancelado por el cliente' WHERE compra_id = $1", 
       [compra_id]
     );
 
     await client.query('COMMIT');
-    res.json({ mensaje: "Pedido y todos sus productos cancelados con éxito" });
+    res.json({ mensaje: "Pedido y combo cancelados con éxito" });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("ERROR AL CANCELAR GRUPO:", err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
