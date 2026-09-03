@@ -1946,30 +1946,41 @@ app.post('/ventas/multiple', async (req, res) => {
 // Procesar la decisión: Aceptar o Declinar cancelación (Afecta a todo el grupo compra_id)
 app.post('/ventas/:id/procesar-cancelacion', async (req, res) => {
   const { id } = req.params;
-  const { accion, motivo } = req.body; 
+  const { accion } = req.body; 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    
+    // Obtener compra_id del movimiento
     const resMov = await client.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
+    if (resMov.rows.length === 0) throw new Error("Movimiento no encontrado");
     const compraId = resMov.rows[0].compra_id;
 
-    if (accion === 'aceptar' || accion === 'cancelar_repartidor') {
+    if (accion === 'aceptar') {
+      // Devolver stock de todos los productos del grupo
       const productos = await client.query("SELECT producto_id, cantidad FROM movimientos WHERE compra_id = $1", [compraId]);
       for (const p of productos.rows) {
         await client.query("UPDATE productos SET stock = stock + $1 WHERE producto_id = $2", [p.cantidad, p.producto_id]);
       }
-      const motivoFinal = motivo || (accion === 'aceptar' ? 'Solicitud aceptada' : 'Cancelado por repartidor');
+      
+      // Cancelar todos los productos del grupo
       await client.query(
-        "UPDATE movimientos SET estado_entrega = 'Cancelado', solicitud_cancelacion = false, motivo_cancelacion = $1 WHERE compra_id = $2", 
-        [motivoFinal, compraId]
+        "UPDATE movimientos SET estado_entrega = 'Cancelado', solicitud_cancelacion = false WHERE compra_id = $1", 
+        [compraId]
       );
     } else {
+      // Solo quitar la bandera de solicitud a todo el grupo si se declina
       await client.query("UPDATE movimientos SET solicitud_cancelacion = false WHERE compra_id = $1", [compraId]);
     }
+
     await client.query('COMMIT');
-    res.json({ mensaje: "Grupo actualizado" });
-  } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
-  finally { client.release(); }
+    res.json({ mensaje: "Procesado correctamente para todo el pedido" });
+  } catch (err) { 
+    await client.query('ROLLBACK'); 
+    res.status(500).json({ error: err.message }); 
+  } finally { 
+    client.release(); 
+  }
 });
 
 
@@ -2045,7 +2056,7 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Obtenemos el compra_id para identificar a todo el grupo
+    // 1. Obtener el compra_id para identificar a todo el grupo de productos
     const infoRes = await client.query("SELECT compra_id FROM movimientos WHERE movimiento_id = $1", [id]);
     if (infoRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -2053,7 +2064,7 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
     }
     const { compra_id } = infoRes.rows[0];
 
-    // Devolvemos el stock de cada producto del grupo que estaba pendiente
+    // 2. Obtener todos los productos del grupo que estaban pendientes para devolverles el stock
     const productosGrupo = await client.query(
       "SELECT producto_id, cantidad FROM movimientos WHERE compra_id = $1 AND estado_entrega = 'Pendiente'", 
       [compra_id]
@@ -2066,16 +2077,17 @@ app.post('/ventas/:id/cancelar', async (req, res) => {
       );
     }
 
-    // Marcamos TODO EL GRUPO como Cancelado
+    // 3. Marcar todo el grupo (todos los movimientos con ese compra_id) como Cancelado
     await client.query(
       "UPDATE movimientos SET estado_entrega = 'Cancelado', motivo_cancelacion = 'Cancelado por el cliente' WHERE compra_id = $1", 
       [compra_id]
     );
 
     await client.query('COMMIT');
-    res.json({ mensaje: "Pedido y combo cancelados con éxito" });
+    res.json({ mensaje: "Pedido y todos sus productos cancelados con éxito" });
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error("❌ ERROR AL CANCELAR GRUPO:", err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
