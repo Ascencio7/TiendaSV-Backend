@@ -1851,7 +1851,6 @@ app.post('/ventas', async (req, res) => {
 
 
 // Historial de ventas
-// Historial de ventas
 app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
