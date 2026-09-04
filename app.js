@@ -1853,6 +1853,11 @@ app.post('/ventas', async (req, res) => {
 // Historial de ventas
 app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
+  
+  // Normalizar parámetros para que '0' o 'null' se traten como búsqueda global
+  const pUsuario = (usuario_id && usuario_id !== '0' && usuario_id !== 'null') ? usuario_id : null;
+  const pSucursal = (sucursal_id && sucursal_id !== '0' && sucursal_id !== 'null') ? sucursal_id : null;
+
   try {
     const result = await pool.query(`
       SELECT 
@@ -1860,11 +1865,13 @@ app.get('/ventas/historial', async (req, res) => {
         MAX(m.movimiento_id) as movimiento_id,
         MAX(p.producto_id) as producto_id,
         MAX(p.sucursal_id) as sucursal_id,
+        -- Subconsulta corregida para manejar compra_id NULL
         (SELECT STRING_AGG(p2.nombre || ' (x' || sub.total_cant || ')', ', ')
          FROM (
            SELECT m2.producto_id, SUM(m2.cantidad) as total_cant
            FROM movimientos m2
-           WHERE m2.compra_id = m.compra_id
+           WHERE (m.compra_id IS NOT NULL AND m2.compra_id = m.compra_id)
+              OR (m.compra_id IS NULL AND m2.movimiento_id = MAX(m.movimiento_id))
            GROUP BY m2.producto_id
          ) sub
          JOIN productos p2 ON sub.producto_id = p2.producto_id
@@ -1875,32 +1882,33 @@ app.get('/ventas/historial', async (req, res) => {
         MAX(m.fecha) as fecha,
         MAX(s.nombre) as sucursal_nombre,
         MAX(m.estado_entrega) as estado_entrega,
-        -- Lógica: Si el usuario que compra es el mismo vendedor o no hay entrega a domicilio, es Consumidor Final
         CASE
           WHEN MAX(u_cli.rol) = 'vendedor' OR MAX(m.entrega_domicilio) = false THEN 'Consumidor Final'
           ELSE MAX(u_cli.nombre)
         END as usuario_nombre,
         MAX(u_cli.correo) as usuario_correo,
         MAX(m.telefono_contacto) as telefono_contacto,
-        -- Ubicación del cliente (si es online)
-        MAX(u_cli.departamento_tienda) as departamento,
-        MAX(u_cli.municipio_tienda) as municipio
+        -- CORRECCIÓN: Usar alias de la tabla sucursales (s)
+        MAX(s.departamento) as departamento,
+        MAX(s.municipio) as municipio
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.producto_id
       JOIN sucursales s ON p.sucursal_id = s.sucursal_id
       LEFT JOIN usuarios u_cli ON m.usuario_id = u_cli.usuario_id
       WHERE m.tipo = 'salida'
-      AND (m.usuario_id = $1 OR $1 IS NULL)
-      AND (p.sucursal_id = $2 OR $2 IS NULL)
+      AND ($1::integer IS NULL OR m.usuario_id = $1)
+      AND ($2::integer IS NULL OR p.sucursal_id = $2)
       AND (m.entrega_domicilio = false OR m.estado_entrega = 'Entregado')
       GROUP BY m.compra_id, m.fecha
       ORDER BY fecha DESC
-    `, [usuario_id || null, sucursal_id || null]);
+    `, [pUsuario, pSucursal]);
     res.json(result.rows);
   } catch (err) { 
+    console.error("ERROR API HISTORIAL:", err.message);
     res.status(500).json({ error: err.message }); 
   }
 });
+
 
 // Registro de ventas multiple con el Carrito
 app.post('/ventas/multiple', async (req, res) => {
