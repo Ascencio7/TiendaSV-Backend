@@ -1854,7 +1854,7 @@ app.post('/ventas', async (req, res) => {
 app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   
-  // Normalizar parámetros para que '0' o 'null' se traten como búsqueda global
+  // Normalizar parámetros para evitar errores con '0' o 'null' strings
   const pUsuario = (usuario_id && usuario_id !== '0' && usuario_id !== 'null') ? usuario_id : null;
   const pSucursal = (sucursal_id && sucursal_id !== '0' && sucursal_id !== 'null') ? sucursal_id : null;
 
@@ -1865,7 +1865,6 @@ app.get('/ventas/historial', async (req, res) => {
         MAX(m.movimiento_id) as movimiento_id,
         MAX(p.producto_id) as producto_id,
         MAX(p.sucursal_id) as sucursal_id,
-        -- Subconsulta corregida para manejar compra_id NULL
         (SELECT STRING_AGG(p2.nombre || ' (x' || sub.total_cant || ')', ', ')
          FROM (
            SELECT m2.producto_id, SUM(m2.cantidad) as total_cant
@@ -1883,12 +1882,12 @@ app.get('/ventas/historial', async (req, res) => {
         MAX(s.nombre) as sucursal_nombre,
         MAX(m.estado_entrega) as estado_entrega,
         CASE
-          WHEN MAX(u_cli.rol) = 'vendedor' OR MAX(m.entrega_domicilio) = false THEN 'Consumidor Final'
+          -- CORRECCIÓN: Usamos BOOL_OR en lugar de MAX para el booleano entrega_domicilio
+          WHEN MAX(u_cli.rol) = 'vendedor' OR BOOL_OR(m.entrega_domicilio) = false THEN 'Consumidor Final'
           ELSE MAX(u_cli.nombre)
         END as usuario_nombre,
         MAX(u_cli.correo) as usuario_correo,
         MAX(m.telefono_contacto) as telefono_contacto,
-        -- CORRECCIÓN: Usar alias de la tabla sucursales (s)
         MAX(s.departamento) as departamento,
         MAX(s.municipio) as municipio
       FROM movimientos m
