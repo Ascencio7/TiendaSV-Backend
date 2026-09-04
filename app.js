@@ -1851,7 +1851,56 @@ app.post('/ventas', async (req, res) => {
 
 
 // Historial de ventas
-
+app.get('/ventas/historial', async (req, res) => {
+  const { usuario_id, sucursal_id } = req.query;
+  try {
+    const result = await pool.query(`
+      SELECT 
+        m.compra_id as movimiento_id_str,
+        MAX(m.movimiento_id) as movimiento_id,
+        MAX(p.producto_id) as producto_id,
+        MAX(p.sucursal_id) as sucursal_id,
+        (SELECT STRING_AGG(p2.nombre || ' (x' || sub.total_cant || ')', ', ')
+         FROM (
+           SELECT m2.producto_id, SUM(m2.cantidad) as total_cant
+           FROM movimientos m2
+           WHERE m2.compra_id = m.compra_id
+           GROUP BY m2.producto_id
+         ) sub
+         JOIN productos p2 ON sub.producto_id = p2.producto_id
+        ) as producto_nombre,
+        SUM(m.cantidad) as cantidad,
+        SUM(m.cantidad * p.precio) as total,
+        SUM(m.cantidad * (p.precio - COALESCE(p.costo, 0))) as ganancia_neta,
+        MAX(m.fecha) as fecha,
+        MAX(s.nombre) as sucursal_nombre,
+        MAX(m.estado_entrega) as estado_entrega,
+        -- Lógica: Si el usuario que compra es el mismo vendedor o no hay entrega a domicilio, es Consumidor Final
+        CASE
+          WHEN MAX(u_cli.rol) = 'vendedor' OR MAX(m.entrega_domicilio) = false THEN 'Consumidor Final'
+          ELSE MAX(u_cli.nombre)
+        END as usuario_nombre,
+        MAX(u_cli.correo) as usuario_correo,
+        MAX(m.telefono_contacto) as telefono_contacto,
+        -- Ubicación del cliente (si es online)
+        MAX(u_cli.departamento_tienda) as departamento,
+        MAX(u_cli.municipio_tienda) as municipio
+      FROM movimientos m
+      JOIN productos p ON m.producto_id = p.producto_id
+      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      LEFT JOIN usuarios u_cli ON m.usuario_id = u_cli.usuario_id
+      WHERE m.tipo = 'salida'
+      AND (m.usuario_id = $1 OR $1 IS NULL)
+      AND (p.sucursal_id = $2 OR $2 IS NULL)
+      AND (m.entrega_domicilio = false OR m.estado_entrega = 'Entregado')
+      GROUP BY m.compra_id, m.fecha
+      ORDER BY fecha DESC
+    `, [usuario_id || null, sucursal_id || null]);
+    res.json(result.rows);
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
+});
 
 
 // Registro de ventas multiple con el Carrito
