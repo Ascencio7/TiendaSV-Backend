@@ -1850,7 +1850,7 @@ app.post('/ventas', async (req, res) => {
 });
 
 
-// Historial de ventas - Método Corregido
+// Historial de ventas
 app.get('/ventas/historial', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   
@@ -1881,14 +1881,13 @@ app.get('/ventas/historial', async (req, res) => {
         MAX(m.fecha) as fecha,
         MAX(s.nombre) as sucursal_nombre,
         MAX(m.estado_entrega) as estado_entrega,
-        -- CORRECCIÓN: Solo es Consumidor Final si NO hay un usuario cliente o si es una venta anónima de vendedor
         CASE
-          WHEN u_cli.usuario_id IS NULL OR MAX(u_cli.rol) = 'vendedor' THEN 'Consumidor Final'
+          -- CORRECCIÓN: Usamos BOOL_OR en lugar de MAX para el booleano entrega_domicilio
+          WHEN MAX(u_cli.rol) = 'vendedor' OR BOOL_OR(m.entrega_domicilio) = false THEN 'Consumidor Final'
           ELSE MAX(u_cli.nombre)
         END as usuario_nombre,
         MAX(u_cli.correo) as usuario_correo,
-        -- CORRECCIÓN: Priorizamos el teléfono del pedido, si no existe, usamos el del perfil del cliente
-        COALESCE(NULLIF(MAX(m.telefono_contacto), ''), MAX(u_cli.telefono)) as telefono_contacto,
+        MAX(m.telefono_contacto) as telefono_contacto,
         MAX(s.departamento) as departamento,
         MAX(s.municipio) as municipio
       FROM movimientos m
