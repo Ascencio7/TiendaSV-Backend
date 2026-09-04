@@ -1902,7 +1902,6 @@ app.get('/ventas/historial', async (req, res) => {
   }
 });
 
-
 // Registro de ventas multiple con el Carrito
 app.post('/ventas/multiple', async (req, res) => {
   const { items, usuario_id, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, repartidor_id } = req.body;
