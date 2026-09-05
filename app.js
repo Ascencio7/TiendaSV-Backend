@@ -1714,37 +1714,27 @@ app.get('/soporte/mis-mensajes/:usuario_id', async (req, res) => {
 // PRODUCTOS
 
 // Listar los productos de la tienda
+// Endpoint de productos mejorado para incluir precios de oferta en tiempo real
 app.get('/productos', async (req, res) => {
   const { sucursal_id, usuario_id } = req.query;
   try {
-    let query = `
-      SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre, u.nombre as vendedor_nombre
+    const query = `
+      SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre, 
+             o.porcentaje_descuento,
+             CASE 
+                WHEN o.oferta_id IS NOT NULL THEN ROUND(p.precio * (1 - (o.porcentaje_descuento / 100)), 2)
+                ELSE p.precio 
+             END as precio_oferta
       FROM productos p 
       LEFT JOIN categorias c ON p.categoria_id = c.categoria_id 
       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      LEFT JOIN usuarios u ON u.usuario_id = p.usuario_id
-    `;
+      LEFT JOIN ofertas o ON p.producto_id = o.producto_id 
+           AND o.activo = true 
+           AND (NOW() AT TIME ZONE 'CST' BETWEEN (o.fecha_inicio + o.hora_inicio) AND (o.fecha_fin + o.hora_fin))
+      WHERE ${usuario_id ? 'p.usuario_id = $1' : 'p.sucursal_id = $1'}
+      ORDER BY p.producto_id DESC`;
     
-    let params = [];
-    let conditions = [];
-
-    // Si viene usuario_id (Vendedor) solo ve sus productos creados
-    if (usuario_id && usuario_id !== '0') {
-      params.push(usuario_id);
-      conditions.push(`p.usuario_id = $${params.length}`);
-    } 
-    // Si viene sucursal_id (Cliente) ve todo lo de esa tienda
-    else if (sucursal_id && sucursal_id !== '0') {
-      params.push(sucursal_id);
-      conditions.push(`p.sucursal_id = $${params.length}`);
-    }
-
-    if (conditions.length > 0) {
-      query += ` WHERE ` + conditions.join(' AND ');
-    }
-    
-    query += ` ORDER BY p.producto_id DESC`;
-    const result = await pool.query(query, params);
+    const result = await pool.query(query, [usuario_id || sucursal_id]);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
