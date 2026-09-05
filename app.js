@@ -1827,24 +1827,41 @@ app.get('/productos/mas-vendidos', async (req, res) => {
 
 // VENTAS
 
-// Registro con asignación de repartidor
+// Registro con asignación de repartidor aleatorio
 app.post('/ventas', async (req, res) => {
   const { producto_id, usuario_id, cantidad, metodoPago, monto_recibido, vuelto_entregado, entregaDomicilio, direccionEntrega, telefonoContacto } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const prodRes = await client.query("SELECT precio FROM productos WHERE producto_id = $1", [producto_id]);
-    const precioU = prodRes.rows[0].precio;
+
+    // Obtener precio y sucursal del producto
+    const prodRes = await client.query("SELECT precio, sucursal_id FROM productos WHERE producto_id = $1", [producto_id]);
+    if (prodRes.rows.length === 0) throw new Error("Producto no encontrado");
+
+    const { precio: precioU, sucursal_id } = prodRes.rows[0];
     const totalVenta = precioU * cantidad;
+
+    // Asignación aleatoria de repartidor si es a domicilio
+    let repartidor_id = null;
+    if (entregaDomicilio) {
+      const repRes = await client.query(
+        "SELECT usuario_id FROM usuarios WHERE sucursal_id = $1 AND rol = 'repartidor' AND activo = true",
+        [sucursal_id]
+      );
+      if (repRes.rows.length > 0) {
+        const randomIndex = Math.floor(Math.random() * repRes.rows.length);
+        repartidor_id = repRes.rows[randomIndex].usuario_id;
+      }
+    }
 
     await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [cantidad, producto_id]);
     await client.query(
-      `INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, monto_recibido, vuelto_entregado, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega) 
-       VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11)`,
-      [producto_id, usuario_id, cantidad, totalVenta, metodoPago, monto_recibido || 0, vuelto_entregado || 0, entregaDomicilio, direccionEntrega, telefonoContacto, entregaDomicilio ? 'Pendiente' : 'Completado']
+      `INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, monto_recibido, vuelto_entregado, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id)
+       VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [producto_id, usuario_id, cantidad, totalVenta, metodoPago, monto_recibido || 0, vuelto_entregado || 0, entregaDomicilio, direccionEntrega, telefonoContacto, entregaDomicilio ? 'Pendiente' : 'Completado', repartidor_id]
     );
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: "Venta registrada" });
+    res.status(201).json({ mensaje: "Venta registrada", repartidor_id });
   } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
   finally { client.release(); }
 });
@@ -1909,19 +1926,39 @@ app.get('/ventas/historial', async (req, res) => {
 });
 
 
-// Registro de ventas multiple con el Carrito
+// Registro de ventas multiple con asignación aleatoria de repartidor
 app.post('/ventas/multiple', async (req, res) => {
-  const { items, usuario_id, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, repartidor_id } = req.body;
+  const { items, usuario_id, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto } = req.body;
   const client = await pool.connect();
   const compra_id = `TRX-${Date.now()}`; 
 
   try {
     await client.query('BEGIN');
     
+    if (!items || items.length === 0) throw new Error("No hay productos en el pedido");
+
+    // Obtener sucursal e información base del primer producto
+    const firstProd = await client.query("SELECT sucursal_id, precio FROM productos WHERE producto_id = $1", [items[0].producto_id]);
+    if (firstProd.rows.length === 0) throw new Error("Producto no encontrado");
+    const sucursalId = firstProd.rows[0].sucursal_id;
+
+    // Asignación aleatoria de repartidor si es a domicilio
+    let repartidor_id = null;
+    if (entregaDomicilio) {
+      const repRes = await client.query(
+        "SELECT usuario_id FROM usuarios WHERE sucursal_id = $1 AND rol = 'repartidor' AND activo = true",
+        [sucursalId]
+      );
+      if (repRes.rows.length > 0) {
+        const randomIndex = Math.floor(Math.random() * repRes.rows.length);
+        repartidor_id = repRes.rows[randomIndex].usuario_id;
+      }
+    }
+
     // Obtenemos el tiempo de preparación configurado por la tienda
     const sucursalRes = await client.query(
       "SELECT tiempo_preparacion_min FROM sucursales WHERE sucursal_id = $1", 
-      [items[0].sucursal_id]
+      [sucursalId]
     );
     const prepMin = sucursalRes.rows[0]?.tiempo_preparacion_min || 15;
     
@@ -1939,18 +1976,18 @@ app.post('/ventas/multiple', async (req, res) => {
       await client.query(
         `INSERT INTO movimientos 
         (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id, tiempo_prometido) 
-        VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12)`,
+        VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           item.producto_id, usuario_id, item.cantidad, totalItem, 
           metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
           entregaDomicilio ? 'Pendiente' : 'Completado', 
-          repartidor_id || null, compra_id, tiempoPrometido
+          repartidor_id, compra_id, tiempoPrometido
         ]
       );
     }
     
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: "Compra realizada", compra_id, tiempoPrometido });
+    res.status(201).json({ mensaje: "Compra realizada", compra_id, tiempoPrometido, repartidor_id });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
