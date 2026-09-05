@@ -2199,7 +2199,7 @@ app.get('/carrito', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
     const result = await pool.query(`
-      SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre
+      SELECT p.*, ci.cantidad as "cantidadEnCarrito", c.nombre as categoria, s.nombre as sucursal_nombre
       FROM carrito_items ci
       JOIN productos p ON ci.producto_id = p.producto_id
       LEFT JOIN categorias c ON p.categoria_id = c.categoria_id
@@ -2233,7 +2233,7 @@ app.post('/carrito/sync', async (req, res) => {
       for (const item of items) {
         await client.query(
           'INSERT INTO carrito_items (usuario_id, sucursal_id, producto_id, cantidad) VALUES ($1, $2, $3, $4)',
-          [usuario_id, sucursal_id, item.producto_id, 1]
+          [usuario_id, sucursal_id, item.producto_id, item.cantidad || 1]
         );
       }
     }
