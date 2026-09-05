@@ -1714,12 +1714,49 @@ app.get('/soporte/mis-mensajes/:usuario_id', async (req, res) => {
 // PRODUCTOS
 
 // Listar los productos de la tienda
+// app.get('/productos', async (req, res) => {
+//   const { sucursal_id, usuario_id } = req.query;
+//   try {
+//     let query = `
+//       SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre, u.nombre as vendedor_nombre
+//       FROM productos p 
+//       LEFT JOIN categorias c ON p.categoria_id = c.categoria_id 
+//       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+//       LEFT JOIN usuarios u ON u.usuario_id = p.usuario_id
+//     `;
+    
+//     let params = [];
+//     let conditions = [];
+
+//     // Si viene usuario_id (Vendedor) solo ve sus productos creados
+//     if (usuario_id && usuario_id !== '0') {
+//       params.push(usuario_id);
+//       conditions.push(`p.usuario_id = $${params.length}`);
+//     } 
+//     // Si viene sucursal_id (Cliente) ve todo lo de esa tienda
+//     else if (sucursal_id && sucursal_id !== '0') {
+//       params.push(sucursal_id);
+//       conditions.push(`p.sucursal_id = $${params.length}`);
+//     }
+
+//     if (conditions.length > 0) {
+//       query += ` WHERE ` + conditions.join(' AND ');
+//     }
+    
+//     query += ` ORDER BY p.producto_id DESC`;
+//     const result = await pool.query(query, params);
+//     res.json(result.rows);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
 // Endpoint de productos mejorado para incluir precios de oferta en tiempo real
 app.get('/productos', async (req, res) => {
   const { sucursal_id, usuario_id } = req.query;
   try {
     const query = `
-      SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre, 
+      SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre, u.nombre as vendedor_nombre,
              o.porcentaje_descuento,
              CASE 
                 WHEN o.oferta_id IS NOT NULL THEN ROUND(p.precio * (1 - (o.porcentaje_descuento / 100)), 2)
@@ -1728,6 +1765,7 @@ app.get('/productos', async (req, res) => {
       FROM productos p 
       LEFT JOIN categorias c ON p.categoria_id = c.categoria_id 
       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      LEFT JOIN usuarios u ON u.usuario_id = p.usuario_id
       LEFT JOIN ofertas o ON p.producto_id = o.producto_id 
            AND o.activo = true 
            AND (NOW() AT TIME ZONE 'CST' BETWEEN (o.fecha_inicio + o.hora_inicio) AND (o.fecha_fin + o.hora_fin))
@@ -1740,6 +1778,7 @@ app.get('/productos', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 // Al crear un producto lo guardamos de quién es el dueño: usuario_id
@@ -1917,6 +1956,74 @@ app.get('/ventas/historial', async (req, res) => {
 
 
 // Registro de ventas multiple con asignación aleatoria de repartidor
+// app.post('/ventas/multiple', async (req, res) => {
+//   const { items, usuario_id, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto } = req.body;
+//   const client = await pool.connect();
+//   const compra_id = `TRX-${Date.now()}`; 
+
+//   try {
+//     await client.query('BEGIN');
+    
+//     if (!items || items.length === 0) throw new Error("No hay productos en el pedido");
+
+//     // Obtener sucursal e información base del primer producto
+//     const firstProd = await client.query("SELECT sucursal_id, precio FROM productos WHERE producto_id = $1", [items[0].producto_id]);
+//     if (firstProd.rows.length === 0) throw new Error("Producto no encontrado");
+//     const sucursalId = firstProd.rows[0].sucursal_id;
+
+//     // Asignación aleatoria de repartidor si es a domicilio
+//     let repartidor_id = null;
+//     if (entregaDomicilio) {
+//       const repRes = await client.query(
+//         "SELECT usuario_id FROM usuarios WHERE sucursal_id = $1 AND rol = 'repartidor' AND activo = true",
+//         [sucursalId]
+//       );
+//       if (repRes.rows.length > 0) {
+//         const randomIndex = Math.floor(Math.random() * repRes.rows.length);
+//         repartidor_id = repRes.rows[randomIndex].usuario_id;
+//       }
+//     }
+
+//     // Obtenemos el tiempo de preparación configurado por la tienda
+//     const sucursalRes = await client.query(
+//       "SELECT tiempo_preparacion_min FROM sucursales WHERE sucursal_id = $1", 
+//       [sucursalId]
+//     );
+//     const prepMin = sucursalRes.rows[0]?.tiempo_preparacion_min || 15;
+    
+//     // Calculamos el tiempo prometido (Ahora + Preparación + 10 min margen trayecto)
+//     const tiempoPrometido = Date.now() + (prepMin + 10) * 60000;
+
+//     for (const item of items) {
+//       const prodRes = await client.query("SELECT precio FROM productos WHERE producto_id = $1", [item.producto_id]);
+//       const precioUnitario = prodRes.rows[0].precio;
+//       const totalItem = precioUnitario * item.cantidad;
+
+//       await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [item.cantidad, item.producto_id]);
+      
+//       // Insertamos el tiempo_prometido en el movimiento
+//       await client.query(
+//         `INSERT INTO movimientos 
+//         (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id, tiempo_prometido) 
+//         VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12)`,
+//         [
+//           item.producto_id, usuario_id, item.cantidad, totalItem, 
+//           metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
+//           entregaDomicilio ? 'Pendiente' : 'Completado', 
+//           repartidor_id, compra_id, tiempoPrometido
+//         ]
+//       );
+//     }
+    
+//     await client.query('COMMIT');
+//     res.status(201).json({ mensaje: "Compra realizada", compra_id, tiempoPrometido, repartidor_id });
+//   } catch (err) {
+//     await client.query('ROLLBACK');
+//     res.status(500).json({ error: err.message });
+//   } finally { client.release(); }
+// });
+
+
 app.post('/ventas/multiple', async (req, res) => {
   const { items, usuario_id, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto } = req.body;
   const client = await pool.connect();
@@ -1925,59 +2032,35 @@ app.post('/ventas/multiple', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    if (!items || items.length === 0) throw new Error("No hay productos en el pedido");
-
-    // Obtener sucursal e información base del primer producto
-    const firstProd = await client.query("SELECT sucursal_id, precio FROM productos WHERE producto_id = $1", [items[0].producto_id]);
-    if (firstProd.rows.length === 0) throw new Error("Producto no encontrado");
-    const sucursalId = firstProd.rows[0].sucursal_id;
-
-    // Asignación aleatoria de repartidor si es a domicilio
-    let repartidor_id = null;
-    if (entregaDomicilio) {
-      const repRes = await client.query(
-        "SELECT usuario_id FROM usuarios WHERE sucursal_id = $1 AND rol = 'repartidor' AND activo = true",
-        [sucursalId]
-      );
-      if (repRes.rows.length > 0) {
-        const randomIndex = Math.floor(Math.random() * repRes.rows.length);
-        repartidor_id = repRes.rows[randomIndex].usuario_id;
-      }
-    }
-
-    // Obtenemos el tiempo de preparación configurado por la tienda
-    const sucursalRes = await client.query(
-      "SELECT tiempo_preparacion_min FROM sucursales WHERE sucursal_id = $1", 
-      [sucursalId]
-    );
-    const prepMin = sucursalRes.rows[0]?.tiempo_preparacion_min || 15;
-    
-    // Calculamos el tiempo prometido (Ahora + Preparación + 10 min margen trayecto)
-    const tiempoPrometido = Date.now() + (prepMin + 10) * 60000;
-
     for (const item of items) {
-      const prodRes = await client.query("SELECT precio FROM productos WHERE producto_id = $1", [item.producto_id]);
-      const precioUnitario = prodRes.rows[0].precio;
+      // Obtenemos el precio oficial o el de oferta directamente de la DB para seguridad
+      const precioRes = await client.query(`
+        SELECT p.precio, 
+               CASE 
+                  WHEN o.oferta_id IS NOT NULL THEN ROUND(p.precio * (1 - (o.porcentaje_descuento / 100)), 2)
+                  ELSE p.precio 
+               END as precio_final
+        FROM productos p
+        LEFT JOIN ofertas o ON p.producto_id = o.producto_id 
+             AND o.activo = true 
+             AND (NOW() AT TIME ZONE 'CST' BETWEEN (o.fecha_inicio + o.hora_inicio) AND (o.fecha_fin + o.hora_fin))
+        WHERE p.producto_id = $1`, [item.producto_id]);
+
+      const precioUnitario = precioRes.rows[0].precio_final;
       const totalItem = precioUnitario * item.cantidad;
 
       await client.query('UPDATE productos SET stock = stock - $1 WHERE producto_id = $2', [item.cantidad, item.producto_id]);
       
-      // Insertamos el tiempo_prometido en el movimiento
       await client.query(
         `INSERT INTO movimientos 
-        (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id, tiempo_prometido) 
-        VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [
-          item.producto_id, usuario_id, item.cantidad, totalItem, 
-          metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
-          entregaDomicilio ? 'Pendiente' : 'Completado', 
-          repartidor_id, compra_id, tiempoPrometido
-        ]
+        (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, compra_id) 
+        VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10)`,
+        [item.producto_id, usuario_id, item.cantidad, totalItem, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, entregaDomicilio ? 'Pendiente' : 'Completado', compra_id]
       );
     }
     
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: "Compra realizada", compra_id, tiempoPrometido, repartidor_id });
+    res.status(201).json({ mensaje: "Compra realizada con éxito", compra_id });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
@@ -2185,17 +2268,42 @@ app.get('/ventas/activas', async (req, res) => {
 //  CARRRITO DE COMPRAS
 
 // Obtener el carrito guardado del usuario para una tienda específica
+// app.get('/carrito', async (req, res) => {
+//   const { usuario_id, sucursal_id } = req.query;
+//   try {
+//     const result = await pool.query(`
+//       SELECT p.*, ci.cantidad as "cantidadEnCarrito", c.nombre as categoria, s.nombre as sucursal_nombre
+//       FROM carrito_items ci
+//       JOIN productos p ON ci.producto_id = p.producto_id
+//       LEFT JOIN categorias c ON p.categoria_id = c.categoria_id
+//       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+//       WHERE ci.usuario_id = $1 AND ci.sucursal_id = $2
+//     `, [usuario_id, sucursal_id]);
+//     res.json(result.rows);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
 app.get('/carrito', async (req, res) => {
   const { usuario_id, sucursal_id } = req.query;
   try {
-    const result = await pool.query(`
-      SELECT p.*, ci.cantidad as "cantidadEnCarrito", c.nombre as categoria, s.nombre as sucursal_nombre
+    const query = `
+      SELECT p.*, ci.cantidad as "cantidadEnCarrito", c.nombre as categoria, s.nombre as sucursal_nombre,
+             CASE 
+                WHEN o.oferta_id IS NOT NULL THEN ROUND(p.precio * (1 - (o.porcentaje_descuento / 100)), 2)
+                ELSE p.precio 
+             END as precio_oferta
       FROM carrito_items ci
       JOIN productos p ON ci.producto_id = p.producto_id
-      LEFT JOIN categorias c ON p.categoria_id = c.categoria_id
+      LEFT JOIN categorias c ON p.categoria_id = c.categoria_id 
       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      WHERE ci.usuario_id = $1 AND ci.sucursal_id = $2
-    `, [usuario_id, sucursal_id]);
+      LEFT JOIN ofertas o ON p.producto_id = o.producto_id 
+           AND o.activo = true 
+           AND (NOW() AT TIME ZONE 'CST' BETWEEN (o.fecha_inicio + o.hora_inicio) AND (o.fecha_fin + o.hora_fin))
+      WHERE ci.usuario_id = $1 AND ci.sucursal_id = $2`;
+
+    const result = await pool.query(query, [usuario_id, sucursal_id]);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
