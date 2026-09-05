@@ -2297,34 +2297,71 @@ app.get('/carrito', async (req, res) => {
 
 
 // Sincronizar el carrito: Guardar el estado actual de la app en la base de datos
-app.post('/carrito/sync', async (req, res) => {
-  const { usuario_id, sucursal_id, items } = req.body; 
-  // 'items' debe ser un array de objetos con {producto_id}
+// app.post('/carrito/sync', async (req, res) => {
+//   const { usuario_id, sucursal_id, items } = req.body; 
+//   // 'items' debe ser un array de objetos con {producto_id}
   
+//   const client = await pool.connect();
+//   try {
+//     await client.query('BEGIN');
+    
+//     // Primero limpiamos el carrito viejo de ese usuario en esa tienda
+//     await client.query(
+//       'DELETE FROM carrito_items WHERE usuario_id = $1 AND sucursal_id = $2',
+//       [usuario_id, sucursal_id]
+//     );
+    
+//     // Insertamos los productos actuales
+//     if (items && items.length > 0) {
+//       for (const item of items) {
+//         await client.query(
+//           'INSERT INTO carrito_items (usuario_id, sucursal_id, producto_id, cantidad) VALUES ($1, $2, $3, $4)',
+//           [usuario_id, sucursal_id, item.producto_id, item.cantidad || 1]
+//         );
+//       }
+//     }
+    
+//     await client.query('COMMIT');
+//     res.status(200).json({ mensaje: "Carrito sincronizado en la nube" });
+//   } catch (err) {
+//     await client.query('ROLLBACK');
+//     res.status(500).json({ error: err.message });
+//   } finally {
+//     client.release();
+//   }
+// });
+
+
+// Sincronizar el carrito de forma robusta
+app.post('/carrito/sync', async (req, res) => {
+  const { usuario_id, sucursal_id, items } = req.body;
+  
+  if (!usuario_id || !sucursal_id) {
+    return res.status(400).json({ error: "Faltan IDs de usuario o sucursal" });
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     
-    // Primero limpiamos el carrito viejo de ese usuario en esa tienda
+    // 1. Limpiar el carrito previo de esta tienda para este usuario
     await client.query(
       'DELETE FROM carrito_items WHERE usuario_id = $1 AND sucursal_id = $2',
       [usuario_id, sucursal_id]
     );
     
-    // Insertamos los productos actuales
+    // 2. Insertar los nuevos items (solo si hay)
     if (items && items.length > 0) {
-      for (const item of items) {
-        await client.query(
-          'INSERT INTO carrito_items (usuario_id, sucursal_id, producto_id, cantidad) VALUES ($1, $2, $3, $4)',
-          [usuario_id, sucursal_id, item.producto_id, item.cantidad || 1]
-        );
-      }
+      const values = items.map(item => `(${usuario_id}, ${sucursal_id}, ${item.producto_id}, ${item.cantidad || 1})`).join(',');
+      const insertQuery = `INSERT INTO carrito_items (usuario_id, sucursal_id, producto_id, cantidad) VALUES ${values}`;
+      await client.query(insertQuery);
     }
     
     await client.query('COMMIT');
-    res.status(200).json({ mensaje: "Carrito sincronizado en la nube" });
+    res.status(200).json({ success: true, mensaje: "Carrito sincronizado" });
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error("ERROR SYNC CARRITO:", err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
