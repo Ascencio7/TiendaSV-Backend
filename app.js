@@ -1976,7 +1976,7 @@ app.post('/ventas/multiple', async (req, res) => {
       await client.query(
         `INSERT INTO movimientos 
         (producto_id, usuario_id, tipo, cantidad, total, fecha, metodo_pago, entrega_domicilio, direccion_entrega, telefono_contacto, estado_entrega, repartidor_id, compra_id, tiempo_prometido) 
-        VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        VALUES ($1, $2, 'salida', $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           item.producto_id, usuario_id, item.cantidad, totalItem, 
           metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, 
