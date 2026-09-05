@@ -1751,12 +1751,14 @@ app.get('/soporte/mis-mensajes/:usuario_id', async (req, res) => {
 //   }
 // });
 
+
 // Endpoint de productos mejorado para incluir precios de oferta en tiempo real
+// Obtener productos con precio de oferta calculado
 app.get('/productos', async (req, res) => {
   const { sucursal_id, usuario_id } = req.query;
   try {
     const query = `
-      SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre, u.nombre as vendedor_nombre,
+      SELECT p.*, c.nombre as categoria, s.nombre as sucursal_nombre,
              o.porcentaje_descuento,
              CASE 
                 WHEN o.oferta_id IS NOT NULL THEN ROUND(p.precio * (1 - (o.porcentaje_descuento / 100)), 2)
@@ -1765,7 +1767,6 @@ app.get('/productos', async (req, res) => {
       FROM productos p 
       LEFT JOIN categorias c ON p.categoria_id = c.categoria_id 
       LEFT JOIN sucursales s ON p.sucursal_id = s.sucursal_id
-      LEFT JOIN usuarios u ON u.usuario_id = p.usuario_id
       LEFT JOIN ofertas o ON p.producto_id = o.producto_id 
            AND o.activo = true 
            AND (NOW() AT TIME ZONE 'CST' BETWEEN (o.fecha_inicio + o.hora_inicio) AND (o.fecha_fin + o.hora_fin))
@@ -1773,6 +1774,31 @@ app.get('/productos', async (req, res) => {
       ORDER BY p.producto_id DESC`;
     
     const result = await pool.query(query, [usuario_id || sucursal_id]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// Obtener carrito con precios de oferta actualizados
+app.get('/carrito', async (req, res) => {
+  const { usuario_id, sucursal_id } = req.query;
+  try {
+    const query = `
+      SELECT p.*, ci.cantidad as "cantidadEnCarrito",
+             CASE 
+                WHEN o.oferta_id IS NOT NULL THEN ROUND(p.precio * (1 - (o.porcentaje_descuento / 100)), 2)
+                ELSE p.precio 
+             END as precio_oferta
+      FROM carrito_items ci
+      JOIN productos p ON ci.producto_id = p.producto_id
+      LEFT JOIN ofertas o ON p.producto_id = o.producto_id 
+           AND o.activo = true 
+           AND (NOW() AT TIME ZONE 'CST' BETWEEN (o.fecha_inicio + o.hora_inicio) AND (o.fecha_fin + o.hora_fin))
+      WHERE ci.usuario_id = $1 AND ci.sucursal_id = $2`;
+
+    const result = await pool.query(query, [usuario_id, sucursal_id]);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2031,9 +2057,8 @@ app.post('/ventas/multiple', async (req, res) => {
 
   try {
     await client.query('BEGIN');
-    
     for (const item of items) {
-      // Obtenemos el precio oficial o el de oferta directamente de la DB para seguridad
+      // Obtenemos el precio vigente (con o sin oferta) directamente de la base de datos
       const precioRes = await client.query(`
         SELECT p.precio, 
                CASE 
@@ -2058,7 +2083,6 @@ app.post('/ventas/multiple', async (req, res) => {
         [item.producto_id, usuario_id, item.cantidad, totalItem, metodoPago, entregaDomicilio, direccionEntrega, telefonoContacto, entregaDomicilio ? 'Pendiente' : 'Completado', compra_id]
       );
     }
-    
     await client.query('COMMIT');
     res.status(201).json({ mensaje: "Compra realizada con éxito", compra_id });
   } catch (err) {
