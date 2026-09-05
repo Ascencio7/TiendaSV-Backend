@@ -2383,6 +2383,83 @@ app.get('/caja/reporte-resumen/:vendedor_id', async (req, res) => {
 });
 
 
+// --- OFERTAS Y DESCUENTOS ---
+
+// Crear una nueva oferta para un producto
+app.post('/ofertas', async (req, res) => {
+  const { 
+    producto_id, 
+    precio_original, 
+    porcentaje_descuento, 
+    fecha_inicio, 
+    hora_inicio, 
+    fecha_fin, 
+    hora_fin 
+  } = req.body;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO ofertas 
+       (producto_id, precio_original, porcentaje_descuento, fecha_inicio, hora_inicio, fecha_fin, hora_fin, activo) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true) 
+       RETURNING *`,
+      [producto_id, precio_original, porcentaje_descuento, fecha_inicio, hora_inicio, fecha_fin, hora_fin]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("❌ ERROR CREAR OFERTA:", err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+
+// Obtener todas las ofertas activas para el CLIENTE
+app.get('/ofertas/activas', async (req, res) => {
+  try {
+    const query = `
+      SELECT o.*, p.nombre as producto_nombre, p.imagen_url as producto_foto,
+             s.sucursal_id, s.nombre as sucursal_nombre
+      FROM ofertas o
+      JOIN productos p ON o.producto_id = p.producto_id
+      JOIN sucursales s ON p.sucursal_id = s.sucursal_id
+      WHERE o.activo = true 
+        AND (NOW() AT TIME ZONE 'CST' BETWEEN (o.fecha_inicio + o.hora_inicio) AND (o.fecha_fin + o.hora_fin))
+      ORDER BY o.porcentaje_descuento DESC`;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// Obtener todas las ofertas de una sucursal (para el vendedor)
+app.get('/ofertas/vendedor/:sucursal_id', async (req, res) => {
+    const { sucursal_id } = req.params;
+    try {
+        const result = await pool.query(`
+            SELECT o.*, p.nombre as producto_nombre, p.imagen_url as producto_foto
+            FROM ofertas o
+            JOIN productos p ON o.producto_id = p.producto_id
+            WHERE p.sucursal_id = $1 AND o.activo = true
+            ORDER BY o.fecha_inicio DESC
+        `, [sucursal_id]);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// Eliminar (Baja lógica)
+app.delete('/ofertas/:id', async (req, res) => {
+  try {
+    await pool.query('UPDATE ofertas SET activo = false WHERE oferta_id = $1', [req.params.id]);
+    res.json({ mensaje: 'Oferta desactivada' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
 
 // Mensaje de que la API esta funcionando en RENDER
 app.get('/', (req, res) => res.status(200).json({ mensaje: 'API funcionando 🚀' }));
